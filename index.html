@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eternal Research Pattern Tool Clone</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body class="darkmode">
+    <button id="mobileToggle" class="generate-button mobile-toggle">Toggle Controls</button>
+
+    <div id="toggleMessage">Hit 'a' to show/hide controls</div>
+
+    <aside id="controls" class="stacked">
+      <div id="uiControls" class="top-tabs">
+        <label class="selected">
+          <input type="radio" name="controlsPosition" value="stacked" checked />
+          <span>Stacked</span>
+        </label>
+        <label>
+          <input type="radio" name="controlsPosition" value="along-top" />
+          <span>Along Top</span>
+        </label>
+        <label>
+          <input type="radio" name="controlsPosition" value="hideControls" />
+          <span>Hidden</span>
+        </label>
+      </div>
+
+      <div id="controlBlocksContainer">
+        <section class="control-block">
+          <div class="control-title">
+            <p>Canvas</p>
+          </div>
+          <div class="canvas-buttons" id="canvasPresets">
+            <button data-size="full" class="canvas-size-button">
+              <span class="size-icon full"></span>
+              <span>Full</span>
+            </button>
+            <button data-size="9x16" class="canvas-size-button">
+              <span class="size-icon tall"></span>
+              <span>9x16</span>
+            </button>
+            <button data-size="4x5" class="canvas-size-button">
+              <span class="size-icon portrait"></span>
+              <span>4x5</span>
+            </button>
+            <button data-size="16x9" class="canvas-size-button">
+              <span class="size-icon wide"></span>
+              <span>16x9</span>
+            </button>
+          </div>
+          <div class="half-grid">
+            <div class="field">
+              <label>Canvas Width</label>
+              <input data-key="canvasWidth" type="range" min="300" max="4000" step="1" />
+              <input data-key="canvasWidth" class="value-input" type="number" />
+            </div>
+            <div class="field">
+              <label>Canvas Height</label>
+              <input data-key="canvasHeight" type="range" min="300" max="4000" step="1" />
+              <input data-key="canvasHeight" class="value-input" type="number" />
+            </div>
+          </div>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Central Space</p>
+          </div>
+          <div class="field">
+            <label>Text Area Width <span id="textAreaWValue"></span></label>
+            <input data-key="textAreaW" type="range" min="0" max="90" step="1" />
+          </div>
+          <div class="field">
+            <label>Text Area Height <span id="textAreaHValue"></span></label>
+            <input data-key="textAreaH" type="range" min="0" max="90" step="1" />
+          </div>
+        </section>
+
+        <section id="motionControls" class="control-block closed">
+          <div class="control-title always-visible">
+            <p>Motion</p>
+            <label class="switch-row">
+              <input id="animateToggle" type="checkbox" />
+              <span>Animate</span>
+            </label>
+          </div>
+          <div class="inner-radio"><span>Styles</span></div>
+          <div class="field">
+            <label>Visible Time</label>
+            <input data-key="visibleTime" type="range" min="0.2" max="3" step="0.05" />
+          </div>
+          <div class="field">
+            <label>Animation Speed</label>
+            <input data-key="speed" type="range" min="0.002" max="0.08" step="0.001" />
+          </div>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Audio</p>
+            <div class="audio-meter">
+              <span class="audio-icon"></span>
+              <span id="audioLevel">0.00</span>
+            </div>
+          </div>
+          <div class="inner-radio"><span>Input</span></div>
+          <button id="demoAudio" class="play-btn">Demon Box Audio</button>
+          <label class="upload-label">
+            <input id="audioUpload" type="file" accept="audio/*" />
+            Upload Audio
+          </label>
+          <button id="playUploaded" class="play-btn" disabled>Uploaded Audio</button>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Style</p>
+          </div>
+          <div class="color-label-row">
+            <span>Color</span>
+            <span id="selectedColorTag">black</span>
+          </div>
+          <div id="colorControls" class="color-controls">
+            <label class="color-option selected">
+              <input type="radio" name="colorChoice" value="black" checked />
+              <span class="swatch black"></span>
+            </label>
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="faint black" />
+              <span class="swatch faint-black"></span>
+            </label>
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="black outlines" />
+              <span class="swatch outline-black"></span>
+            </label>
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="white" />
+              <span class="swatch white"></span>
+            </label>
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="faint white" />
+              <span class="swatch faint-white"></span>
+            </label>
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="white outlines" />
+              <span class="swatch outline-white"></span>
+            </label>
+          </div>
+          <div class="field">
+            <label>Density</label>
+            <input data-key="density" type="range" min="0.15" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Straight Lines</label>
+            <input data-key="straightLines" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Flourishes</label>
+            <input data-key="flourishes" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Blank Areas</label>
+            <input data-key="blankAreas" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Line Thickness</label>
+            <input data-key="lineThickness" type="range" min="2" max="18" step="0.1" />
+          </div>
+        </section>
+
+        <section class="control-block actions">
+          <div class="main-button">
+            <button id="generateButton" class="generate-button">Generate</button>
+            <button id="downloadButton" class="download-button" title="Download PNG">↓</button>
+          </div>
+          <div class="wordmark">ETERNAL RESEARCH</div>
+        </section>
+      </div>
+    </aside>
+
+    <main id="patternContainer" class="pattern padded">
+      <canvas id="patternCanvas"></canvas>
+      <div id="textAreaMarker"></div>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
