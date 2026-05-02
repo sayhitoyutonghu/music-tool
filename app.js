@@ -19,8 +19,8 @@ const state = {
   blurStrokeSize: 30,
   blurStrokeOpacity: 0.72,
   showText: true,
-  textValue: "inside    look    inside\n\nblinks\ndgoed\n2025",
-  textSize: 32,
+  textValue: "Nothing\nPrecious",
+  textSize: 116,
   textLeading: 1.25,
   colorChoice: "pink",
   animate: false,
@@ -646,58 +646,78 @@ function drawOrnament(item) {
   if (item.kind === "loop") drawLoop(item, localProgress);
 }
 
-function wrapTextLine(text, maxWidth) {
-  if (!text.trim()) return [""];
-  const words = text.split(/(\s+)/).filter(Boolean);
-  const lines = [];
-  let current = "";
-
-  for (const word of words) {
-    const candidate = `${current}${word}`;
-    if (ctx.measureText(candidate).width <= maxWidth || !current) {
-      current = candidate;
-    } else {
-      lines.push(current.trimEnd());
-      current = word.trimStart();
-    }
-  }
-
-  if (current) lines.push(current.trimEnd());
-  return lines;
-}
-
-function drawTextContent() {
-  if (!state.showText || !state.textValue.trim()) return;
-  const mode = colorModes[state.colorChoice];
-  const rect = getTextRect(0);
-  const fallback = {
-    x: state.canvasWidth * 0.24,
-    y: state.canvasHeight * 0.28,
-    w: state.canvasWidth * 0.52,
-    h: state.canvasHeight * 0.44,
-  };
-  const box = rect.w > 0 && rect.h > 0 ? rect : fallback;
-  const padding = Math.min(state.canvasWidth, state.canvasHeight) * 0.025;
-  const maxWidth = Math.max(40, box.w - padding * 2);
-  const lineHeight = state.textSize * state.textLeading;
-
-  ctx.save();
-  ctx.font = `700 ${state.textSize}px "Geist Mono", monospace`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = mode.stroke;
-
+function getTextPhrases() {
   const lines = state.textValue
     .split("\n")
-    .flatMap((line) => wrapTextLine(line, maxWidth));
-  const maxLines = Math.max(1, Math.floor((box.h - padding * 2) / lineHeight));
-  const visibleLines = lines.slice(0, maxLines);
-  const startY = box.y + box.h / 2 - ((visibleLines.length - 1) * lineHeight) / 2;
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length) return lines;
+  return state.textValue.trim().split(/\s+/).filter(Boolean);
+}
 
-  visibleLines.forEach((line, index) => {
-    ctx.fillText(line, box.x + box.w / 2, startY + index * lineHeight);
-  });
+function drawOutlinedText(phrase, x, y, angle, size, alpha = 1) {
+  const mode = colorModes[state.colorChoice];
+  const strokeWidth = Math.max(3, size * 0.055);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.font = `700 ${size}px "Snell Roundhand", "Brush Script MT", "Apple Chancery", cursive`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  if (state.blurStroke && state.blurStrokeSize > 0 && state.blurStrokeOpacity > 0) {
+    ctx.save();
+    ctx.globalAlpha = state.blurStrokeOpacity * alpha;
+    ctx.shadowColor = mode.glow;
+    ctx.shadowBlur = state.blurStrokeSize * 0.85;
+    ctx.strokeStyle = mode.hollow ? "#ffffff" : mode.glow;
+    ctx.lineWidth = strokeWidth + state.blurStrokeSize * 0.12;
+    ctx.strokeText(phrase, 0, 0);
+    ctx.restore();
+  }
+
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = mode.hollow ? "#ffffff" : mode.stroke;
+  ctx.lineWidth = strokeWidth;
+  ctx.strokeText(phrase, 0, 0);
+
+  ctx.globalAlpha = Math.min(0.35, alpha * 0.55);
+  ctx.strokeStyle = mode.stroke;
+  ctx.lineWidth = Math.max(1, strokeWidth * 0.25);
+  ctx.strokeText(phrase, 0, 0);
   ctx.restore();
+}
+
+function drawBorderText() {
+  if (!state.showText || !state.textValue.trim()) return;
+  const phrases = getTextPhrases();
+  const rect = getFrameRect();
+  const w = rect.right - rect.left;
+  const h = rect.bottom - rect.top;
+  const size = state.textSize;
+  const spread = state.textLeading;
+  const placements = [
+    { x: rect.left + w * 0.28, y: rect.top + size * 0.1, angle: -0.03, phrase: phrases[0], alpha: 0.98 },
+    { x: rect.left + w * 0.66, y: rect.bottom - size * 0.02, angle: -0.08, phrase: phrases[1] || phrases[0], alpha: 0.98 },
+    { x: rect.left + size * 0.18, y: rect.top + h * 0.58, angle: -Math.PI / 2 + 0.05, phrase: phrases[1] || phrases[0], alpha: 0.82 },
+    { x: rect.right - size * 0.12, y: rect.top + h * 0.38, angle: Math.PI / 2 - 0.08, phrase: phrases[0], alpha: 0.82 },
+    { x: rect.left + w * 0.18, y: rect.bottom + size * 0.36 * spread, angle: 0.1, phrase: phrases[0], alpha: 0.45 },
+    { x: rect.right - w * 0.16, y: rect.top - size * 0.34 * spread, angle: -0.12, phrase: phrases[1] || phrases[0], alpha: 0.38 },
+  ];
+
+  for (const placement of placements) {
+    drawOutlinedText(
+      placement.phrase,
+      placement.x,
+      placement.y,
+      placement.angle,
+      size * (placement.alpha > 0.9 ? 1 : 0.78),
+      placement.alpha,
+    );
+  }
 }
 
 function draw() {
@@ -709,7 +729,7 @@ function draw() {
   for (const item of state.paths) {
     drawOrnament(item);
   }
-  drawTextContent();
+  drawBorderText();
   ctx.restore();
 }
 
