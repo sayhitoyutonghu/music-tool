@@ -501,6 +501,18 @@ input[type="number"]::-webkit-outer-spin-button {
   transform: translateX(-50%) rotate(45deg);
 }
 
+.pink {
+  background: #ef80c5;
+}
+
+.blue {
+  background: #69a7ff;
+}
+
+.green {
+  background: #9bd66f;
+}
+
 .black {
   background: #050505;
 }

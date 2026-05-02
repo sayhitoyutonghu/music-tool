@@ -6,16 +6,16 @@ const marker = document.getElementById("textAreaMarker");
 const state = {
   canvasWidth: 1400,
   canvasHeight: 1400,
-  textAreaW: 0,
-  textAreaH: 0,
-  density: 0.4,
-  straightLines: 0.12,
-  flourishes: 0.75,
-  blankAreas: 0.3,
-  lineThickness: 7,
+  textAreaW: 42,
+  textAreaH: 54,
+  density: 0.55,
+  straightLines: 0.08,
+  flourishes: 0.86,
+  blankAreas: 0.16,
+  lineThickness: 14,
   visibleTime: 1.3,
   speed: 0.012,
-  colorChoice: "black",
+  colorChoice: "pink",
   animate: false,
   paths: [],
   blankZones: [],
@@ -35,12 +35,12 @@ let gainNode;
 let demoPlaying = false;
 
 const colorModes = {
-  black: { bg: "#f8f8f6", ink: "#050505", alpha: 1, outline: false },
-  "faint black": { bg: "#f8f8f6", ink: "#050505", alpha: 0.35, outline: false },
-  "black outlines": { bg: "#f8f8f6", ink: "#050505", alpha: 1, outline: true },
-  white: { bg: "#050505", ink: "#ffffff", alpha: 1, outline: false },
-  "faint white": { bg: "#050505", ink: "#ffffff", alpha: 0.35, outline: false },
-  "white outlines": { bg: "#050505", ink: "#ffffff", alpha: 1, outline: true },
+  pink: { bg: "#fbfbf8", fill: "#ee7fc4", stroke: "#111111", alpha: 1, hollow: false },
+  black: { bg: "#fbfbf8", fill: "#050505", stroke: "#111111", alpha: 1, hollow: false },
+  blue: { bg: "#fbfbf8", fill: "#69a7ff", stroke: "#111111", alpha: 1, hollow: false },
+  green: { bg: "#fbfbf8", fill: "#9bd66f", stroke: "#111111", alpha: 1, hollow: false },
+  white: { bg: "#050505", fill: "#ffffff", stroke: "#ffffff", alpha: 1, hollow: false },
+  outline: { bg: "#fbfbf8", fill: "#fbfbf8", stroke: "#111111", alpha: 1, hollow: true },
 };
 
 const sliders = Array.from(document.querySelectorAll("input[type='range'][data-key]"));
@@ -272,36 +272,209 @@ function mirrorPath(path, mirrorX, mirrorY) {
   };
 }
 
+function getFrameRect() {
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const fallbackW = state.canvasWidth * 0.5;
+  const fallbackH = state.canvasHeight * 0.62;
+  const textRect = getTextRect(0);
+  const contentW = state.textAreaW > 0 ? textRect.w : fallbackW;
+  const contentH = state.textAreaH > 0 ? textRect.h : fallbackH;
+  const cx = state.canvasWidth / 2;
+  const cy = state.canvasHeight / 2;
+  const gap = minSide * 0.065;
+  const margin = minSide * 0.075;
+
+  return {
+    left: clamp(cx - contentW / 2 - gap, margin, state.canvasWidth - margin),
+    right: clamp(cx + contentW / 2 + gap, margin, state.canvasWidth - margin),
+    top: clamp(cy - contentH / 2 - gap, margin, state.canvasHeight - margin),
+    bottom: clamp(cy + contentH / 2 + gap, margin, state.canvasHeight - margin),
+  };
+}
+
+function makeSidePoints(rect, side, offset = 0) {
+  const points = [];
+  const horizontal = side === "top" || side === "bottom";
+  const length = horizontal ? rect.right - rect.left : rect.bottom - rect.top;
+  const steps = Math.max(26, Math.floor(length / 18));
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const wobble = minSide * rand(0.012, 0.036) * (1 + state.flourishes * 0.45);
+  const waveA = rand(1.5, 3.6);
+  const waveB = rand(4.5, 8.5);
+
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const wave = Math.sin(t * Math.PI * 2 * waveA + offset) * wobble +
+      Math.sin(t * Math.PI * 2 * waveB + offset * 0.7) * wobble * 0.35;
+    let x;
+    let y;
+
+    if (side === "top") {
+      x = rect.left + t * length;
+      y = rect.top + wave;
+    } else if (side === "bottom") {
+      x = rect.right - t * length;
+      y = rect.bottom + wave;
+    } else if (side === "left") {
+      x = rect.left + wave;
+      y = rect.bottom - t * length;
+    } else {
+      x = rect.right + wave;
+      y = rect.top + t * length;
+    }
+
+    points.push({ x, y });
+  }
+  return points;
+}
+
+function tangentAt(points, index) {
+  const prev = points[Math.max(0, index - 1)];
+  const next = points[Math.min(points.length - 1, index + 1)];
+  return Math.atan2(next.y - prev.y, next.x - prev.x);
+}
+
+function normalForSide(side) {
+  if (side === "top") return -Math.PI / 2;
+  if (side === "bottom") return Math.PI / 2;
+  if (side === "left") return Math.PI;
+  return 0;
+}
+
+function createLoop(anchor, side, scale) {
+  const outward = normalForSide(side);
+  const cx = state.canvasWidth / 2;
+  const cy = state.canvasHeight / 2;
+  const bias = Math.atan2(anchor.y - cy, anchor.x - cx);
+  return {
+    kind: "loop",
+    x: anchor.x + Math.cos(outward) * scale * rand(0.3, 1.25),
+    y: anchor.y + Math.sin(outward) * scale * rand(0.3, 1.25),
+    angle: bias + rand(-0.7, 0.7),
+    rx: scale * rand(0.65, 1.35),
+    ry: scale * rand(0.26, 0.58),
+    width: Math.max(6, state.lineThickness * rand(0.55, 0.95)),
+    phase: rand(0, Math.PI * 2),
+  };
+}
+
+function createLeaf(anchor, tangent, side, scale) {
+  const outward = normalForSide(side);
+  return {
+    kind: "leaf",
+    x: anchor.x + Math.cos(outward) * scale * rand(0.15, 0.8),
+    y: anchor.y + Math.sin(outward) * scale * rand(0.15, 0.8),
+    angle: tangent + rand(-0.9, 0.9),
+    length: scale * rand(1.0, 2.35),
+    width: scale * rand(0.45, 1.0),
+    notch: rand(0.08, 0.22),
+    phase: rand(0, Math.PI * 2),
+  };
+}
+
+function createTendril(anchor, tangent, side, scale) {
+  const points = [];
+  const direction = chance(0.5) ? 1 : -1;
+  const outward = normalForSide(side);
+  let x = anchor.x;
+  let y = anchor.y;
+  let angle = tangent + direction * rand(0.75, 1.35) + Math.cos(outward) * 0.18;
+  const steps = Math.floor(rand(20, 42));
+
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    angle += direction * (0.08 + t * 0.18);
+    const step = scale * rand(0.06, 0.16);
+    x += Math.cos(angle) * step;
+    y += Math.sin(angle) * step;
+    if (!pointInTextRect(x, y, scale * 0.5)) points.push({ x, y });
+  }
+
+  return {
+    kind: "ribbon",
+    points,
+    width: Math.max(5, state.lineThickness * rand(0.34, 0.56)),
+    phase: rand(0, Math.PI * 2),
+  };
+}
+
+function addCornerMass(ornaments, rect) {
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const scale = minSide * 0.035 * (0.8 + state.flourishes);
+  const corners = [
+    { x: rect.left, y: rect.top, angle: -Math.PI * 0.75 },
+    { x: rect.right, y: rect.top, angle: -Math.PI * 0.25 },
+    { x: rect.right, y: rect.bottom, angle: Math.PI * 0.25 },
+    { x: rect.left, y: rect.bottom, angle: Math.PI * 0.75 },
+  ];
+
+  for (const corner of corners) {
+    if (!chance(0.45 + state.flourishes * 0.35)) continue;
+    ornaments.push({
+      kind: "leaf",
+      x: corner.x + Math.cos(corner.angle) * scale * 0.55,
+      y: corner.y + Math.sin(corner.angle) * scale * 0.55,
+      angle: corner.angle,
+      length: scale * rand(1.9, 3.2),
+      width: scale * rand(0.7, 1.25),
+      notch: rand(0.12, 0.22),
+      phase: rand(0, Math.PI * 2),
+    });
+  }
+}
+
 function buildPattern() {
   state.seed = Date.now() >>> 0;
   createBlankZones();
-  const audioBoost = clamp(state.audioLevel * 1.6, 0, 0.45);
-  const count = Math.floor(22 + (state.density + audioBoost) * 90);
-  const basePaths = [];
+  const rect = getFrameRect();
+  const ornaments = [];
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const audioBoost = clamp(state.audioLevel * 0.7, 0, 0.35);
+  const ribbonCount = Math.max(1, Math.round(1 + state.density * 2 + audioBoost));
+  const sides = ["top", "right", "bottom", "left"];
 
-  for (let i = 0; i < count; i += 1) {
-    const signX = chance(0.5) ? -1 : 1;
-    const signY = chance(0.5) ? -1 : 1;
-    const path = createCurlPath(signX, signY);
-    decoratePath(path);
-    if (path.points.length > 2) basePaths.push(path);
+  for (const side of sides) {
+    for (let i = 0; i < ribbonCount; i += 1) {
+      const points = makeSidePoints(rect, side, rand(0, Math.PI * 2));
+      const sideOffset = (i - (ribbonCount - 1) / 2) * state.lineThickness * 0.9;
+      const normal = normalForSide(side);
+      const shifted = points.map((point) => ({
+        x: point.x + Math.cos(normal) * sideOffset,
+        y: point.y + Math.sin(normal) * sideOffset,
+      }));
+      ornaments.push({
+        kind: "ribbon",
+        points: shifted,
+        width: state.lineThickness * rand(0.74, 1.25),
+        phase: rand(0, Math.PI * 2),
+      });
+
+      const decorCount = Math.floor(3 + state.flourishes * 8 + state.density * 4);
+      for (let j = 0; j < decorCount; j += 1) {
+        const index = Math.floor(rand(3, shifted.length - 4));
+        const anchor = shifted[index];
+        const tangent = tangentAt(shifted, index);
+        const scale = minSide * rand(0.018, 0.052) * (0.55 + state.flourishes);
+        const pick = rand();
+
+        if (pick < 0.36) ornaments.push(createLeaf(anchor, tangent, side, scale));
+        else if (pick < 0.68) ornaments.push(createLoop(anchor, side, scale));
+        else ornaments.push(createTendril(anchor, tangent, side, scale));
+      }
+    }
   }
 
-  const mirrored = [];
-  for (const path of basePaths) {
-    mirrored.push(path);
-    if (chance(0.85)) mirrored.push(mirrorPath(path, true, false));
-    if (chance(0.85)) mirrored.push(mirrorPath(path, false, true));
-    if (chance(0.7)) mirrored.push(mirrorPath(path, true, true));
-  }
-
-  state.paths = mirrored.sort(() => rand(-1, 1));
+  addCornerMass(ornaments, rect);
+  state.paths = ornaments.map((item, index) => ({
+    ...item,
+    revealAt: index / Math.max(1, ornaments.length),
+  }));
   state.progress = state.animate ? 0 : 1;
   state.hold = 0;
   draw();
 }
 
-function drawPath(points, width, progress, phase) {
+function drawSmoothStroke(points, width, progress, phase) {
   if (points.length < 2 || progress <= 0) return;
   const mode = colorModes[state.colorChoice];
   const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
@@ -316,25 +489,61 @@ function drawPath(points, width, progress, phase) {
     const my = (current.y + next.y) / 2 + Math.cos(i * 0.6 + phase) * animatedNoise;
     ctx.quadraticCurveTo(current.x, current.y, mx, my);
   }
+
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-
-  if (mode.outline) {
-    ctx.strokeStyle = mode.ink;
-    ctx.globalAlpha = mode.alpha;
-    ctx.lineWidth = width * 1.15;
-    ctx.stroke();
-    ctx.strokeStyle = mode.bg;
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = Math.max(1, width * 0.58);
-    ctx.stroke();
-  } else {
-    ctx.strokeStyle = mode.ink;
-    ctx.globalAlpha = mode.alpha;
-    ctx.lineWidth = width;
-    ctx.stroke();
-  }
+  ctx.globalAlpha = mode.alpha;
+  ctx.strokeStyle = mode.stroke;
+  ctx.lineWidth = width + Math.max(3, width * 0.34);
+  ctx.stroke();
+  ctx.strokeStyle = mode.hollow ? mode.bg : mode.fill;
+  ctx.lineWidth = Math.max(1, width);
+  ctx.stroke();
   ctx.globalAlpha = 1;
+}
+
+function drawLeaf(item, localProgress) {
+  if (localProgress <= 0) return;
+  const mode = colorModes[state.colorChoice];
+  const scale = clamp(localProgress, 0, 1);
+  const length = item.length * scale;
+  const width = item.width * scale;
+
+  ctx.save();
+  ctx.translate(item.x, item.y);
+  ctx.rotate(item.angle);
+  ctx.beginPath();
+  ctx.moveTo(-length * 0.48, 0);
+  ctx.bezierCurveTo(-length * 0.24, -width, length * 0.22, -width * 0.9, length * 0.52, 0);
+  ctx.bezierCurveTo(length * 0.08, width * (1 + item.notch), -length * 0.28, width * 0.74, -length * 0.48, 0);
+  ctx.closePath();
+  ctx.fillStyle = mode.hollow ? mode.bg : mode.fill;
+  ctx.strokeStyle = mode.stroke;
+  ctx.lineWidth = Math.max(2, state.lineThickness * 0.22);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLoop(item, localProgress) {
+  if (localProgress <= 0) return;
+  const points = [];
+  const steps = Math.floor(34 * clamp(localProgress, 0, 1));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / 34;
+    const a = t * Math.PI * 2;
+    const x = item.x + Math.cos(item.angle) * Math.cos(a) * item.rx - Math.sin(item.angle) * Math.sin(a) * item.ry;
+    const y = item.y + Math.sin(item.angle) * Math.cos(a) * item.rx + Math.cos(item.angle) * Math.sin(a) * item.ry;
+    points.push({ x, y });
+  }
+  drawSmoothStroke(points, item.width, 1, item.phase);
+}
+
+function drawOrnament(item) {
+  const localProgress = clamp((state.progress - item.revealAt) / 0.22, 0, 1);
+  if (item.kind === "ribbon") drawSmoothStroke(item.points, item.width, localProgress, item.phase);
+  if (item.kind === "leaf") drawLeaf(item, localProgress);
+  if (item.kind === "loop") drawLoop(item, localProgress);
 }
 
 function draw() {
@@ -343,11 +552,8 @@ function draw() {
   ctx.fillStyle = mode.bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  for (const path of state.paths) {
-    drawPath(path.points, path.width, state.progress, path.phase);
-    for (const branch of path.branches) {
-      drawPath(branch.points, branch.width, clamp(state.progress * 1.2 - 0.15, 0, 1), path.phase + 1.7);
-    }
+  for (const item of state.paths) {
+    drawOrnament(item);
   }
   ctx.restore();
 }
