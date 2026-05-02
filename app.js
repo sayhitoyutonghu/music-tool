@@ -35,10 +35,10 @@ let gainNode;
 let demoPlaying = false;
 
 const colorModes = {
-  pink: { bg: "#fbfbf8", fill: "#ee7fc4", stroke: "#111111", alpha: 1, hollow: false },
+  pink: { bg: "#ee7fc4", fill: "#ee7fc4", stroke: "#111111", alpha: 1, hollow: true },
   black: { bg: "#fbfbf8", fill: "#050505", stroke: "#111111", alpha: 1, hollow: false },
-  blue: { bg: "#fbfbf8", fill: "#69a7ff", stroke: "#111111", alpha: 1, hollow: false },
-  green: { bg: "#fbfbf8", fill: "#9bd66f", stroke: "#111111", alpha: 1, hollow: false },
+  blue: { bg: "#69a7ff", fill: "#69a7ff", stroke: "#111111", alpha: 1, hollow: true },
+  green: { bg: "#9bd66f", fill: "#9bd66f", stroke: "#111111", alpha: 1, hollow: true },
   white: { bg: "#050505", fill: "#ffffff", stroke: "#ffffff", alpha: 1, hollow: false },
   outline: { bg: "#fbfbf8", fill: "#fbfbf8", stroke: "#111111", alpha: 1, hollow: true },
 };
@@ -274,21 +274,20 @@ function mirrorPath(path, mirrorX, mirrorY) {
 
 function getFrameRect() {
   const minSide = Math.min(state.canvasWidth, state.canvasHeight);
-  const fallbackW = state.canvasWidth * 0.5;
-  const fallbackH = state.canvasHeight * 0.62;
   const textRect = getTextRect(0);
-  const contentW = state.textAreaW > 0 ? textRect.w : fallbackW;
-  const contentH = state.textAreaH > 0 ? textRect.h : fallbackH;
-  const cx = state.canvasWidth / 2;
-  const cy = state.canvasHeight / 2;
   const gap = minSide * 0.065;
-  const margin = minSide * 0.075;
+  const marginX = Math.min(state.canvasWidth * 0.11, minSide * 0.14);
+  const marginY = Math.min(state.canvasHeight * 0.12, minSide * 0.14);
+  const textLeftLimit = state.textAreaW > 0 ? textRect.x - gap : marginX;
+  const textRightLimit = state.textAreaW > 0 ? textRect.x + textRect.w + gap : state.canvasWidth - marginX;
+  const textTopLimit = state.textAreaH > 0 ? textRect.y - gap : marginY;
+  const textBottomLimit = state.textAreaH > 0 ? textRect.y + textRect.h + gap : state.canvasHeight - marginY;
 
   return {
-    left: clamp(cx - contentW / 2 - gap, margin, state.canvasWidth - margin),
-    right: clamp(cx + contentW / 2 + gap, margin, state.canvasWidth - margin),
-    top: clamp(cy - contentH / 2 - gap, margin, state.canvasHeight - margin),
-    bottom: clamp(cy + contentH / 2 + gap, margin, state.canvasHeight - margin),
+    left: clamp(Math.min(marginX, textLeftLimit), marginX * 0.45, state.canvasWidth * 0.42),
+    right: clamp(Math.max(state.canvasWidth - marginX, textRightLimit), state.canvasWidth * 0.58, state.canvasWidth - marginX * 0.45),
+    top: clamp(Math.min(marginY, textTopLimit), marginY * 0.45, state.canvasHeight * 0.42),
+    bottom: clamp(Math.max(state.canvasHeight - marginY, textBottomLimit), state.canvasHeight * 0.58, state.canvasHeight - marginY * 0.45),
   };
 }
 
@@ -423,52 +422,131 @@ function addCornerMass(ornaments, rect) {
   }
 }
 
-function buildPattern() {
-  state.seed = Date.now() >>> 0;
-  createBlankZones();
-  const rect = getFrameRect();
-  const ornaments = [];
+function sideVectors(side) {
+  if (side === "top") return { tx: 1, ty: 0, nx: 0, ny: -1 };
+  if (side === "right") return { tx: 0, ty: 1, nx: 1, ny: 0 };
+  if (side === "bottom") return { tx: -1, ty: 0, nx: 0, ny: 1 };
+  return { tx: 0, ty: -1, nx: -1, ny: 0 };
+}
+
+function sideLength(rect, side) {
+  return side === "top" || side === "bottom" ? rect.right - rect.left : rect.bottom - rect.top;
+}
+
+function sideBasePoint(rect, side, t) {
+  if (side === "top") return { x: rect.left + (rect.right - rect.left) * t, y: rect.top };
+  if (side === "right") return { x: rect.right, y: rect.top + (rect.bottom - rect.top) * t };
+  if (side === "bottom") return { x: rect.right - (rect.right - rect.left) * t, y: rect.bottom };
+  return { x: rect.left, y: rect.bottom - (rect.bottom - rect.top) * t };
+}
+
+function borderPoint(rect, side, t, normalOffset, sidePhase) {
+  const base = sideBasePoint(rect, side, t);
+  const vectors = sideVectors(side);
+  const length = sideLength(rect, side);
+  const wobble = Math.sin(t * Math.PI * 2.2 + sidePhase) * length * 0.015 +
+    Math.sin(t * Math.PI * 8.5 + sidePhase * 0.4) * length * 0.004;
+  return {
+    x: base.x + vectors.nx * (normalOffset + wobble),
+    y: base.y + vectors.ny * (normalOffset + wobble),
+  };
+}
+
+function appendSideRun(points, rect, side, fromT, toT, phase, normalOffset) {
+  const length = sideLength(rect, side);
+  const steps = Math.max(2, Math.ceil(Math.abs(toT - fromT) * length / 15));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = fromT + (toT - fromT) * (i / steps);
+    points.push(borderPoint(rect, side, t, normalOffset, phase));
+  }
+}
+
+function appendLoopMotif(points, rect, side, t, scale, phase, normalOffset) {
+  const base = borderPoint(rect, side, t, normalOffset, phase);
+  const vectors = sideVectors(side);
+  const direction = chance(0.5) ? 1 : -1;
+  const rx = scale * rand(0.7, 1.6);
+  const ry = scale * rand(0.45, 1.2);
+  const loops = chance(0.25 + state.flourishes * 0.25) ? 1.65 : 1;
+  const steps = Math.floor(30 * loops);
+
+  for (let i = 0; i <= steps; i += 1) {
+    const a = (i / steps) * Math.PI * 2 * loops * direction;
+    const along = (Math.cos(a) - 1) * rx;
+    const out = Math.sin(a) * ry;
+    points.push({
+      x: base.x + vectors.tx * along + vectors.nx * out,
+      y: base.y + vectors.ty * along + vectors.ny * out,
+    });
+  }
+}
+
+function appendSignatureKnot(points, rect, side, t, scale, phase, normalOffset) {
+  const base = borderPoint(rect, side, t, normalOffset, phase);
+  const vectors = sideVectors(side);
+  const direction = chance(0.5) ? 1 : -1;
+  const steps = 28;
+
+  for (let i = 0; i <= steps; i += 1) {
+    const p = i / steps;
+    const along = (p - 0.5) * scale * 2.8;
+    const out = Math.sin(p * Math.PI * 2) * scale * 0.8 * direction +
+      Math.sin(p * Math.PI * 5) * scale * 0.26;
+    points.push({
+      x: base.x + vectors.tx * along + vectors.nx * out,
+      y: base.y + vectors.ty * along + vectors.ny * out,
+    });
+  }
+}
+
+function createContinuousBorderPath(rect) {
+  const points = [];
   const minSide = Math.min(state.canvasWidth, state.canvasHeight);
-  const audioBoost = clamp(state.audioLevel * 0.7, 0, 0.35);
-  const ribbonCount = Math.max(1, Math.round(1 + state.density * 2 + audioBoost));
+  const scale = minSide * (0.018 + state.lineThickness / 1400);
+  const normalOffset = minSide * 0.006;
   const sides = ["top", "right", "bottom", "left"];
 
   for (const side of sides) {
-    for (let i = 0; i < ribbonCount; i += 1) {
-      const points = makeSidePoints(rect, side, rand(0, Math.PI * 2));
-      const sideOffset = (i - (ribbonCount - 1) / 2) * state.lineThickness * 0.9;
-      const normal = normalForSide(side);
-      const shifted = points.map((point) => ({
-        x: point.x + Math.cos(normal) * sideOffset,
-        y: point.y + Math.sin(normal) * sideOffset,
-      }));
-      ornaments.push({
-        kind: "ribbon",
-        points: shifted,
-        width: state.lineThickness * rand(0.74, 1.25),
-        phase: rand(0, Math.PI * 2),
-      });
+    const length = sideLength(rect, side);
+    const motifCount = Math.max(3, Math.floor(length / (minSide * (0.13 - state.density * 0.035))));
+    const phase = rand(0, Math.PI * 2);
+    let cursor = 0;
+    const motifs = [];
 
-      const decorCount = Math.floor(3 + state.flourishes * 8 + state.density * 4);
-      for (let j = 0; j < decorCount; j += 1) {
-        const index = Math.floor(rand(3, shifted.length - 4));
-        const anchor = shifted[index];
-        const tangent = tangentAt(shifted, index);
-        const scale = minSide * rand(0.018, 0.052) * (0.55 + state.flourishes);
-        const pick = rand();
-
-        if (pick < 0.36) ornaments.push(createLeaf(anchor, tangent, side, scale));
-        else if (pick < 0.68) ornaments.push(createLoop(anchor, side, scale));
-        else ornaments.push(createTendril(anchor, tangent, side, scale));
-      }
+    for (let i = 0; i < motifCount; i += 1) {
+      motifs.push(clamp((i + rand(0.28, 0.74)) / motifCount, 0.08, 0.92));
     }
+
+    for (const motifT of motifs) {
+      const radiusT = rand(0.025, 0.055);
+      appendSideRun(points, rect, side, cursor, Math.max(cursor, motifT - radiusT), phase, normalOffset);
+      if (chance(0.58 + state.flourishes * 0.28)) {
+        appendLoopMotif(points, rect, side, motifT, scale * rand(0.8, 1.7), phase, normalOffset);
+      } else {
+        appendSignatureKnot(points, rect, side, motifT, scale * rand(0.75, 1.45), phase, normalOffset);
+      }
+      cursor = Math.min(1, motifT + radiusT);
+    }
+
+    appendSideRun(points, rect, side, cursor, 1, phase, normalOffset);
   }
 
-  addCornerMass(ornaments, rect);
-  state.paths = ornaments.map((item, index) => ({
-    ...item,
-    revealAt: index / Math.max(1, ornaments.length),
-  }));
+  points.push(points[0]);
+  return points;
+}
+
+function buildPattern() {
+  state.seed = Date.now() >>> 0;
+  const rect = getFrameRect();
+  const audioBoost = clamp(state.audioLevel * 0.5, 0, 0.25);
+  const points = createContinuousBorderPath(rect);
+  state.paths = [{
+    kind: "continuous",
+    points,
+    width: state.lineThickness * (0.72 + audioBoost),
+    phase: rand(0, Math.PI * 2),
+    revealAt: 0,
+  }];
   state.progress = state.animate ? 0 : 1;
   state.hold = 0;
   draw();
@@ -541,6 +619,7 @@ function drawLoop(item, localProgress) {
 
 function drawOrnament(item) {
   const localProgress = clamp((state.progress - item.revealAt) / 0.22, 0, 1);
+  if (item.kind === "continuous") drawSmoothStroke(item.points, item.width, state.progress, item.phase);
   if (item.kind === "ribbon") drawSmoothStroke(item.points, item.width, localProgress, item.phase);
   if (item.kind === "leaf") drawLeaf(item, localProgress);
   if (item.kind === "loop") drawLoop(item, localProgress);
