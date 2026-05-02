@@ -18,6 +18,10 @@ const state = {
   blurStroke: true,
   blurStrokeSize: 30,
   blurStrokeOpacity: 0.72,
+  showText: true,
+  textValue: "inside    look    inside\n\nblinks\ndgoed\n2025",
+  textSize: 32,
+  textLeading: 1.25,
   colorChoice: "pink",
   animate: false,
   paths: [],
@@ -74,6 +78,8 @@ function syncInputs() {
   document.getElementById("textAreaWValue").textContent = `${Math.round(state.textAreaW)}%`;
   document.getElementById("textAreaHValue").textContent = `${Math.round(state.textAreaH)}%`;
   document.getElementById("blurStrokeToggle").checked = state.blurStroke;
+  document.getElementById("showTextToggle").checked = state.showText;
+  document.getElementById("textInput").value = state.textValue;
 }
 
 function resizeCanvas() {
@@ -640,6 +646,60 @@ function drawOrnament(item) {
   if (item.kind === "loop") drawLoop(item, localProgress);
 }
 
+function wrapTextLine(text, maxWidth) {
+  if (!text.trim()) return [""];
+  const words = text.split(/(\s+)/).filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = `${current}${word}`;
+    if (ctx.measureText(candidate).width <= maxWidth || !current) {
+      current = candidate;
+    } else {
+      lines.push(current.trimEnd());
+      current = word.trimStart();
+    }
+  }
+
+  if (current) lines.push(current.trimEnd());
+  return lines;
+}
+
+function drawTextContent() {
+  if (!state.showText || !state.textValue.trim()) return;
+  const mode = colorModes[state.colorChoice];
+  const rect = getTextRect(0);
+  const fallback = {
+    x: state.canvasWidth * 0.24,
+    y: state.canvasHeight * 0.28,
+    w: state.canvasWidth * 0.52,
+    h: state.canvasHeight * 0.44,
+  };
+  const box = rect.w > 0 && rect.h > 0 ? rect : fallback;
+  const padding = Math.min(state.canvasWidth, state.canvasHeight) * 0.025;
+  const maxWidth = Math.max(40, box.w - padding * 2);
+  const lineHeight = state.textSize * state.textLeading;
+
+  ctx.save();
+  ctx.font = `700 ${state.textSize}px "Geist Mono", monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = mode.stroke;
+
+  const lines = state.textValue
+    .split("\n")
+    .flatMap((line) => wrapTextLine(line, maxWidth));
+  const maxLines = Math.max(1, Math.floor((box.h - padding * 2) / lineHeight));
+  const visibleLines = lines.slice(0, maxLines);
+  const startY = box.y + box.h / 2 - ((visibleLines.length - 1) * lineHeight) / 2;
+
+  visibleLines.forEach((line, index) => {
+    ctx.fillText(line, box.x + box.w / 2, startY + index * lineHeight);
+  });
+  ctx.restore();
+}
+
 function draw() {
   const mode = colorModes[state.colorChoice];
   ctx.save();
@@ -649,6 +709,7 @@ function draw() {
   for (const item of state.paths) {
     drawOrnament(item);
   }
+  drawTextContent();
   ctx.restore();
 }
 
@@ -813,7 +874,7 @@ function bindControls() {
       syncInputs();
       if (key.startsWith("textArea")) updateMarker();
       if (key === "canvasWidth" || key === "canvasHeight") resizeCanvas();
-      if (key.startsWith("blurStroke")) draw();
+      if (key.startsWith("blurStroke") || key === "textSize" || key === "textLeading") draw();
       else buildPattern();
     });
   });
@@ -869,6 +930,16 @@ function bindControls() {
 
   document.getElementById("blurStrokeToggle").addEventListener("change", (event) => {
     state.blurStroke = event.target.checked;
+    draw();
+  });
+
+  document.getElementById("showTextToggle").addEventListener("change", (event) => {
+    state.showText = event.target.checked;
+    draw();
+  });
+
+  document.getElementById("textInput").addEventListener("input", (event) => {
+    state.textValue = event.target.value;
     draw();
   });
 
