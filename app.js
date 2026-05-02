@@ -459,6 +459,7 @@ function borderPoint(rect, side, t, normalOffset, sidePhase) {
   return {
     x: base.x + vectors.nx * (normalOffset + wobble),
     y: base.y + vectors.ny * (normalOffset + wobble),
+    sideT: t,
   };
 }
 
@@ -509,54 +510,170 @@ function appendSignatureKnot(points, rect, side, t, scale, phase, normalOffset) 
   }
 }
 
-function createContinuousBorderPath(rect) {
-  const points = [];
+function estimateTextWidth(phrase, size) {
+  ctx.save();
+  ctx.font = `700 ${size}px "Snell Roundhand", "Brush Script MT", "Apple Chancery", cursive`;
+  const width = ctx.measureText(phrase).width;
+  ctx.restore();
+  return width;
+}
+
+function getBorderTextPlacements(rect) {
+  if (!state.showText || !state.textValue.trim()) return [];
+  const phrases = getTextPhrases();
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const normalOffset = minSide * 0.006;
+  const size = state.textSize;
+  const spread = state.textLeading;
+  const specs = [
+    { side: "top", t: 0.36, phrase: phrases[0], tilt: -0.03, alpha: 0.98, sizeMult: 1 },
+    { side: "bottom", t: 0.55, phrase: phrases[1] || phrases[0], tilt: -0.08, alpha: 0.98, sizeMult: 1 },
+    { side: "left", t: 0.58, phrase: phrases[1] || phrases[0], tilt: 0.05, alpha: 0.82, sizeMult: 0.78 },
+    { side: "right", t: 0.36, phrase: phrases[0], tilt: -0.08, alpha: 0.82, sizeMult: 0.78 },
+  ];
+
+  return specs.map((spec) => {
+    const vectors = sideVectors(spec.side);
+    const phraseSize = size * spec.sizeMult;
+    const phraseWidth = estimateTextWidth(spec.phrase, phraseSize);
+    const length = sideLength(rect, spec.side);
+    const gap = clamp((phraseWidth / length) * 0.62 * spread, 0.12, 0.56);
+    const gapStart = clamp(spec.t - gap / 2, 0.02, 0.94);
+    const gapEnd = clamp(spec.t + gap / 2, 0.06, 0.98);
+    const base = borderPoint(rect, spec.side, spec.t, normalOffset, 0);
+    const angle = Math.atan2(vectors.ty, vectors.tx) + spec.tilt;
+    const half = phraseWidth * 0.34;
+
+    return {
+      kind: "borderText",
+      side: spec.side,
+      phrase: spec.phrase,
+      x: base.x,
+      y: base.y,
+      angle,
+      size: phraseSize,
+      alpha: spec.alpha,
+      width: state.lineThickness * 0.72,
+      phase: rand(0, Math.PI * 2),
+      revealAt: 0,
+      gapStart,
+      gapEnd,
+      startPoint: {
+        x: base.x - vectors.tx * half,
+        y: base.y - vectors.ty * half,
+      },
+      endPoint: {
+        x: base.x + vectors.tx * half,
+        y: base.y + vectors.ty * half,
+      },
+    };
+  });
+}
+
+function createTextConnectors(rect, placement) {
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const normalOffset = minSide * 0.006;
+  const startEdge = borderPoint(rect, placement.side, placement.gapStart, normalOffset, 0);
+  const endEdge = borderPoint(rect, placement.side, placement.gapEnd, normalOffset, 0);
+  return [
+    {
+      kind: "connector",
+      points: [startEdge, placement.startPoint],
+      width: placement.width,
+      phase: placement.phase,
+      revealAt: 0,
+    },
+    {
+      kind: "connector",
+      points: [placement.endPoint, endEdge],
+      width: placement.width,
+      phase: placement.phase + 0.8,
+      revealAt: 0,
+    },
+  ];
+}
+
+function createContinuousBorderSegments(rect, placements = []) {
+  const segments = [];
   const minSide = Math.min(state.canvasWidth, state.canvasHeight);
   const scale = minSide * (0.018 + state.lineThickness / 1400);
   const normalOffset = minSide * 0.006;
   const sides = ["top", "right", "bottom", "left"];
 
   for (const side of sides) {
+    const sidePoints = [];
     const length = sideLength(rect, side);
     const motifCount = Math.max(3, Math.floor(length / (minSide * (0.13 - state.density * 0.035))));
     const phase = rand(0, Math.PI * 2);
     let cursor = 0;
     const motifs = [];
+    const gaps = placements
+      .filter((placement) => placement.side === side)
+      .map((placement) => ({
+        start: placement.gapStart,
+        end: placement.gapEnd,
+      }))
+      .sort((a, b) => a.start - b.start);
 
     for (let i = 0; i < motifCount; i += 1) {
       motifs.push(clamp((i + rand(0.28, 0.74)) / motifCount, 0.08, 0.92));
     }
 
     for (const motifT of motifs) {
+      if (gaps.some((gap) => motifT > gap.start && motifT < gap.end)) continue;
       const radiusT = rand(0.025, 0.055);
-      appendSideRun(points, rect, side, cursor, Math.max(cursor, motifT - radiusT), phase, normalOffset);
+      appendSideRun(sidePoints, rect, side, cursor, Math.max(cursor, motifT - radiusT), phase, normalOffset);
       if (chance(0.58 + state.flourishes * 0.28)) {
-        appendLoopMotif(points, rect, side, motifT, scale * rand(0.8, 1.7), phase, normalOffset);
+        appendLoopMotif(sidePoints, rect, side, motifT, scale * rand(0.8, 1.7), phase, normalOffset);
       } else {
-        appendSignatureKnot(points, rect, side, motifT, scale * rand(0.75, 1.45), phase, normalOffset);
+        appendSignatureKnot(sidePoints, rect, side, motifT, scale * rand(0.75, 1.45), phase, normalOffset);
       }
       cursor = Math.min(1, motifT + radiusT);
     }
 
-    appendSideRun(points, rect, side, cursor, 1, phase, normalOffset);
+    appendSideRun(sidePoints, rect, side, cursor, 1, phase, normalOffset);
+    const splitSegments = [];
+    let current = [];
+
+    for (const point of sidePoints) {
+      const t = point.sideT;
+      const inGap = gaps.some((gap) => t > gap.start && t < gap.end);
+      if (inGap) {
+        if (current.length > 1) splitSegments.push(current);
+        current = [];
+      } else {
+        current.push(point);
+      }
+    }
+    if (current.length > 1) splitSegments.push(current);
+
+    for (const points of splitSegments) {
+      segments.push({
+        kind: "continuous",
+        points,
+        side,
+        width: state.lineThickness * 0.72,
+        phase: rand(0, Math.PI * 2),
+        revealAt: 0,
+      });
+    }
   }
 
-  points.push(points[0]);
-  return points;
+  return segments;
 }
 
 function buildPattern() {
   state.seed = Date.now() >>> 0;
   const rect = getFrameRect();
   const audioBoost = clamp(state.audioLevel * 0.5, 0, 0.25);
-  const points = createContinuousBorderPath(rect);
-  state.paths = [{
-    kind: "continuous",
-    points,
-    width: state.lineThickness * (0.72 + audioBoost),
-    phase: rand(0, Math.PI * 2),
-    revealAt: 0,
-  }];
+  const textPlacements = getBorderTextPlacements(rect);
+  const borderSegments = createContinuousBorderSegments(rect, textPlacements)
+    .map((segment) => ({
+      ...segment,
+      width: state.lineThickness * (0.72 + audioBoost),
+    }));
+  const connectors = textPlacements.flatMap((placement) => createTextConnectors(rect, placement));
+  state.paths = [...borderSegments, ...connectors, ...textPlacements];
   state.progress = state.animate ? 0 : 1;
   state.hold = 0;
   draw();
@@ -577,6 +694,7 @@ function drawSmoothStroke(points, width, progress, phase) {
     const my = (current.y + next.y) / 2 + Math.cos(i * 0.6 + phase) * animatedNoise;
     ctx.quadraticCurveTo(current.x, current.y, mx, my);
   }
+  ctx.lineTo(points[drawCount - 1].x, points[drawCount - 1].y);
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -641,6 +759,8 @@ function drawLoop(item, localProgress) {
 function drawOrnament(item) {
   const localProgress = clamp((state.progress - item.revealAt) / 0.22, 0, 1);
   if (item.kind === "continuous") drawSmoothStroke(item.points, item.width, state.progress, item.phase);
+  if (item.kind === "connector") drawSmoothStroke(item.points, item.width, state.progress, item.phase);
+  if (item.kind === "borderText") drawOutlinedText(item.phrase, item.x, item.y, item.angle, item.size, item.alpha * state.progress);
   if (item.kind === "ribbon") drawSmoothStroke(item.points, item.width, localProgress, item.phase);
   if (item.kind === "leaf") drawLeaf(item, localProgress);
   if (item.kind === "loop") drawLoop(item, localProgress);
@@ -729,7 +849,6 @@ function draw() {
   for (const item of state.paths) {
     drawOrnament(item);
   }
-  drawBorderText();
   ctx.restore();
 }
 
@@ -894,7 +1013,7 @@ function bindControls() {
       syncInputs();
       if (key.startsWith("textArea")) updateMarker();
       if (key === "canvasWidth" || key === "canvasHeight") resizeCanvas();
-      if (key.startsWith("blurStroke") || key === "textSize" || key === "textLeading") draw();
+      if (key.startsWith("blurStroke")) draw();
       else buildPattern();
     });
   });
@@ -955,12 +1074,12 @@ function bindControls() {
 
   document.getElementById("showTextToggle").addEventListener("change", (event) => {
     state.showText = event.target.checked;
-    draw();
+    buildPattern();
   });
 
   document.getElementById("textInput").addEventListener("input", (event) => {
     state.textValue = event.target.value;
-    draw();
+    buildPattern();
   });
 
   document.getElementById("generateButton").addEventListener("click", buildPattern);
