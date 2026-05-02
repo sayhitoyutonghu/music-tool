@@ -15,6 +15,9 @@ const state = {
   lineThickness: 14,
   visibleTime: 1.3,
   speed: 0.012,
+  blurStroke: true,
+  blurStrokeSize: 30,
+  blurStrokeOpacity: 0.72,
   colorChoice: "pink",
   animate: false,
   paths: [],
@@ -35,12 +38,12 @@ let gainNode;
 let demoPlaying = false;
 
 const colorModes = {
-  pink: { bg: "#ee7fc4", fill: "#ee7fc4", stroke: "#111111", alpha: 1, hollow: true },
-  black: { bg: "#fbfbf8", fill: "#050505", stroke: "#111111", alpha: 1, hollow: false },
-  blue: { bg: "#69a7ff", fill: "#69a7ff", stroke: "#111111", alpha: 1, hollow: true },
-  green: { bg: "#9bd66f", fill: "#9bd66f", stroke: "#111111", alpha: 1, hollow: true },
-  white: { bg: "#050505", fill: "#ffffff", stroke: "#ffffff", alpha: 1, hollow: false },
-  outline: { bg: "#fbfbf8", fill: "#fbfbf8", stroke: "#111111", alpha: 1, hollow: true },
+  pink: { bg: "#ee7fc4", fill: "#ee7fc4", stroke: "#111111", glow: "#ff1493", alpha: 1, hollow: true },
+  black: { bg: "#fbfbf8", fill: "#050505", stroke: "#111111", glow: "#ff1493", alpha: 1, hollow: false },
+  blue: { bg: "#69a7ff", fill: "#69a7ff", stroke: "#111111", glow: "#ff1493", alpha: 1, hollow: true },
+  green: { bg: "#9bd66f", fill: "#9bd66f", stroke: "#111111", glow: "#ff1493", alpha: 1, hollow: true },
+  white: { bg: "#050505", fill: "#ffffff", stroke: "#ffffff", glow: "#ff1493", alpha: 1, hollow: false },
+  outline: { bg: "#fbfbf8", fill: "#fbfbf8", stroke: "#111111", glow: "#ff1493", alpha: 1, hollow: true },
 };
 
 const sliders = Array.from(document.querySelectorAll("input[type='range'][data-key]"));
@@ -70,6 +73,7 @@ function syncInputs() {
   });
   document.getElementById("textAreaWValue").textContent = `${Math.round(state.textAreaW)}%`;
   document.getElementById("textAreaHValue").textContent = `${Math.round(state.textAreaH)}%`;
+  document.getElementById("blurStrokeToggle").checked = state.blurStroke;
 }
 
 function resizeCanvas() {
@@ -570,6 +574,17 @@ function drawSmoothStroke(points, width, progress, phase) {
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  if (state.blurStroke && state.blurStrokeSize > 0 && state.blurStrokeOpacity > 0) {
+    ctx.save();
+    ctx.globalAlpha = state.blurStrokeOpacity;
+    ctx.shadowColor = mode.glow;
+    ctx.shadowBlur = state.blurStrokeSize;
+    ctx.strokeStyle = mode.glow;
+    ctx.lineWidth = width + state.blurStrokeSize * 0.42;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.globalAlpha = mode.alpha;
   ctx.strokeStyle = mode.stroke;
   ctx.lineWidth = width + Math.max(3, width * 0.34);
@@ -798,7 +813,8 @@ function bindControls() {
       syncInputs();
       if (key.startsWith("textArea")) updateMarker();
       if (key === "canvasWidth" || key === "canvasHeight") resizeCanvas();
-      buildPattern();
+      if (key.startsWith("blurStroke")) draw();
+      else buildPattern();
     });
   });
 
@@ -848,6 +864,11 @@ function bindControls() {
     document.getElementById("motionControls").classList.toggle("closed", !state.animate);
     state.progress = state.animate ? 0 : 1;
     state.hold = 0;
+    draw();
+  });
+
+  document.getElementById("blurStrokeToggle").addEventListener("change", (event) => {
+    state.blurStroke = event.target.checked;
     draw();
   });
 

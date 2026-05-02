@@ -214,6 +214,11 @@ body::-webkit-scrollbar,
   font-size: 11px;
 }
 
+.feature-toggle {
+  justify-content: space-between;
+  padding-top: 2px;
+}
+
 input[type="checkbox"] {
   appearance: none;
   width: 12px;
