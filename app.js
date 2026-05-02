@@ -6,13 +6,13 @@ const marker = document.getElementById("textAreaMarker");
 const state = {
   canvasWidth: 1400,
   canvasHeight: 1400,
-  textAreaW: 0,
-  textAreaH: 0,
-  density: 0.4,
-  straightLines: 0.12,
-  flourishes: 0.75,
-  blankAreas: 0.3,
-  lineThickness: 7,
+  textAreaW: 38,
+  textAreaH: 56,
+  density: 0.28,
+  straightLines: 0.2,
+  flourishes: 0.42,
+  blankAreas: 0.08,
+  lineThickness: 8,
   visibleTime: 1.3,
   speed: 0.012,
   colorChoice: "black",
@@ -243,7 +243,7 @@ function createSpiral(anchor, angle, side, radius) {
 
 function decoratePath(path) {
   if (path.points.length < 8 || path.type === "straight") return;
-  const branchCount = Math.floor(rand(0, 4) * state.flourishes);
+  const branchCount = Math.floor(rand(0, 2.4) * state.flourishes);
   for (let i = 0; i < branchCount; i += 1) {
     const index = Math.floor(rand(2, path.points.length - 3));
     const prev = path.points[index - 1];
@@ -272,30 +272,88 @@ function mirrorPath(path, mirrorX, mirrorY) {
   };
 }
 
+function collectPathPoints(path) {
+  const result = [];
+  for (let i = 0; i < path.points.length; i += 2) {
+    result.push(path.points[i]);
+  }
+  for (const branch of path.branches) {
+    for (let i = 0; i < branch.points.length; i += 2) {
+      result.push(branch.points[i]);
+    }
+  }
+  return result;
+}
+
+function getCellKey(x, y, size) {
+  return `${Math.floor(x / size)},${Math.floor(y / size)}`;
+}
+
+function pathOverlaps(points, cellMap, cellSize, minDist) {
+  const minDistSq = minDist * minDist;
+  for (const point of points) {
+    const cx = Math.floor(point.x / cellSize);
+    const cy = Math.floor(point.y / cellSize);
+    for (let ox = -1; ox <= 1; ox += 1) {
+      for (let oy = -1; oy <= 1; oy += 1) {
+        const bucket = cellMap.get(`${cx + ox},${cy + oy}`);
+        if (!bucket) continue;
+        for (const other of bucket) {
+          const dx = point.x - other.x;
+          const dy = point.y - other.y;
+          if (dx * dx + dy * dy < minDistSq) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function addPointsToMap(points, cellMap, cellSize) {
+  for (const point of points) {
+    const key = getCellKey(point.x, point.y, cellSize);
+    if (!cellMap.has(key)) cellMap.set(key, []);
+    cellMap.get(key).push(point);
+  }
+}
+
 function buildPattern() {
   state.seed = Date.now() >>> 0;
   createBlankZones();
-  const audioBoost = clamp(state.audioLevel * 1.6, 0, 0.45);
-  const count = Math.floor(22 + (state.density + audioBoost) * 90);
+  const audioBoost = clamp(state.audioLevel * 0.8, 0, 0.2);
+  const count = Math.floor(7 + (state.density + audioBoost) * 20);
+  const maxAttempts = count * 24;
+  const collisionMap = new Map();
+  const collisionCell = Math.max(10, state.lineThickness * 1.3);
+  const minDistance = Math.max(8, state.lineThickness * 1.8);
   const basePaths = [];
+  let attempts = 0;
 
-  for (let i = 0; i < count; i += 1) {
-    const signX = chance(0.5) ? -1 : 1;
-    const signY = chance(0.5) ? -1 : 1;
-    const path = createCurlPath(signX, signY);
+  while (basePaths.length < count && attempts < maxAttempts) {
+    attempts += 1;
+    const path = createCurlPath(-1, -1);
     decoratePath(path);
-    if (path.points.length > 2) basePaths.push(path);
+    if (path.points.length <= 2) continue;
+    const samples = collectPathPoints(path);
+    if (!samples.length) continue;
+    if (pathOverlaps(samples, collisionMap, collisionCell, minDistance)) continue;
+    addPointsToMap(samples, collisionMap, collisionCell);
+    basePaths.push(path);
   }
 
   const mirrored = [];
   for (const path of basePaths) {
     mirrored.push(path);
-    if (chance(0.85)) mirrored.push(mirrorPath(path, true, false));
-    if (chance(0.85)) mirrored.push(mirrorPath(path, false, true));
-    if (chance(0.7)) mirrored.push(mirrorPath(path, true, true));
+    if (state.mirrorMode === "four") {
+      mirrored.push(mirrorPath(path, true, false));
+      mirrored.push(mirrorPath(path, false, true));
+      mirrored.push(mirrorPath(path, true, true));
+    } else {
+      mirrored.push(mirrorPath(path, true, false));
+    }
   }
 
-  state.paths = mirrored.sort(() => rand(-1, 1));
+  state.paths = mirrored;
   state.progress = state.animate ? 0 : 1;
   state.hold = 0;
   draw();
