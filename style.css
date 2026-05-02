@@ -214,11 +214,6 @@ body::-webkit-scrollbar,
   font-size: 11px;
 }
 
-.feature-toggle {
-  justify-content: space-between;
-  padding-top: 2px;
-}
-
 input[type="checkbox"] {
   appearance: none;
   width: 12px;
@@ -253,6 +248,31 @@ input[type="checkbox"]:checked {
 
 .field .value-input {
   width: 58px;
+}
+
+.mini-tabs {
+  display: flex;
+  gap: 3px;
+}
+
+.mini-tabs input {
+  display: none;
+}
+
+.mini-tabs span {
+  display: block;
+  padding: 3px 6px;
+  border-radius: var(--border-radius-s);
+  background: var(--inactive-top-tag);
+  color: var(--fg-color);
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mini-tabs label.selected span {
+  background: var(--fg-color);
+  color: var(--bg-color);
 }
 
 .half-grid {
@@ -312,21 +332,6 @@ input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   appearance: none;
   margin: 0;
-}
-
-.text-input {
-  width: 100%;
-  min-height: 110px;
-  resize: vertical;
-  border: 0;
-  border-radius: var(--border-radius);
-  outline: none;
-  padding: 10px;
-  background: var(--light-gray);
-  color: var(--fg-color);
-  font-family: "Geist Mono", monospace;
-  font-size: 12px;
-  line-height: 1.35;
 }
 
 .canvas-buttons {
@@ -519,18 +524,6 @@ input[type="number"]::-webkit-outer-spin-button {
   border-right: 1px solid var(--fg-color);
   border-bottom: 1px solid var(--fg-color);
   transform: translateX(-50%) rotate(45deg);
-}
-
-.pink {
-  background: #ef80c5;
-}
-
-.blue {
-  background: #69a7ff;
-}
-
-.green {
-  background: #9bd66f;
 }
 
 .black {

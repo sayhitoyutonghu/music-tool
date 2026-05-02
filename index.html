@@ -81,26 +81,6 @@
           </div>
         </section>
 
-        <section class="control-block">
-          <div class="control-title">
-            <p>Border Text</p>
-            <label class="switch-row">
-              <input id="showTextToggle" type="checkbox" checked />
-              <span>Show</span>
-            </label>
-          </div>
-          <textarea id="textInput" class="text-input" rows="5" spellcheck="false">Nothing
-Precious</textarea>
-          <div class="field">
-            <label>Text Size</label>
-            <input data-key="textSize" type="range" min="8" max="180" step="1" />
-          </div>
-          <div class="field">
-            <label>Text Spread</label>
-            <input data-key="textLeading" type="range" min="0.8" max="2.4" step="0.05" />
-          </div>
-        </section>
-
         <section id="motionControls" class="control-block closed">
           <div class="control-title always-visible">
             <p>Motion</p>
@@ -143,33 +123,46 @@ Precious</textarea>
           </div>
           <div class="color-label-row">
             <span>Color</span>
-            <span id="selectedColorTag">pink</span>
+            <span id="selectedColorTag">black</span>
           </div>
           <div id="colorControls" class="color-controls">
             <label class="color-option selected">
-              <input type="radio" name="colorChoice" value="pink" checked />
-              <span class="swatch pink"></span>
-            </label>
-            <label class="color-option">
-              <input type="radio" name="colorChoice" value="black" />
+              <input type="radio" name="colorChoice" value="black" checked />
               <span class="swatch black"></span>
             </label>
             <label class="color-option">
-              <input type="radio" name="colorChoice" value="blue" />
-              <span class="swatch blue"></span>
+              <input type="radio" name="colorChoice" value="faint black" />
+              <span class="swatch faint-black"></span>
             </label>
             <label class="color-option">
-              <input type="radio" name="colorChoice" value="green" />
-              <span class="swatch green"></span>
+              <input type="radio" name="colorChoice" value="black outlines" />
+              <span class="swatch outline-black"></span>
             </label>
             <label class="color-option">
               <input type="radio" name="colorChoice" value="white" />
               <span class="swatch white"></span>
             </label>
             <label class="color-option">
-              <input type="radio" name="colorChoice" value="outline" />
+              <input type="radio" name="colorChoice" value="faint white" />
+              <span class="swatch faint-white"></span>
+            </label>
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="white outlines" />
               <span class="swatch outline-white"></span>
             </label>
+          </div>
+          <div class="field">
+            <label>Mirror</label>
+            <div id="mirrorModeControls" class="mini-tabs">
+              <label class="selected">
+                <input type="radio" name="mirrorMode" value="four" checked />
+                <span>Four Sides</span>
+              </label>
+              <label>
+                <input type="radio" name="mirrorMode" value="two" />
+                <span>Two Sides</span>
+              </label>
+            </div>
           </div>
           <div class="field">
             <label>Density</label>
@@ -190,18 +183,6 @@ Precious</textarea>
           <div class="field">
             <label>Line Thickness</label>
             <input data-key="lineThickness" type="range" min="2" max="18" step="0.1" />
-          </div>
-          <label class="switch-row feature-toggle">
-            <input id="blurStrokeToggle" type="checkbox" checked />
-            <span>Blur Stroke</span>
-          </label>
-          <div class="field">
-            <label>Blur Size</label>
-            <input data-key="blurStrokeSize" type="range" min="0" max="80" step="1" />
-          </div>
-          <div class="field">
-            <label>Blur Opacity</label>
-            <input data-key="blurStrokeOpacity" type="range" min="0" max="1" step="0.01" />
           </div>
         </section>
 
