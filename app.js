@@ -16,6 +16,8 @@ const state = {
   visibleTime: 1.3,
   speed: 0.012,
   mirrorMode: "four",
+  textureMode: "flat",
+  textureDepth: 0.65,
   colorChoice: "black",
   animate: false,
   paths: [],
@@ -42,6 +44,9 @@ const colorModes = {
   white: { bg: "#050505", ink: "#ffffff", alpha: 1, outline: false },
   "faint white": { bg: "#050505", ink: "#ffffff", alpha: 0.35, outline: false },
   "white outlines": { bg: "#050505", ink: "#ffffff", alpha: 1, outline: true },
+  "olive pop": { bg: "#5f5d43", ink: "#b5b3eb", accent: "#ff3f42", alpha: 1, outline: false },
+  "berry dusk": { bg: "#2f1636", ink: "#ff6ea8", accent: "#7ab6ff", alpha: 1, outline: false },
+  "ice neon": { bg: "#1b2f35", ink: "#bdf4ff", accent: "#ff5e88", alpha: 1, outline: false },
 };
 
 const sliders = Array.from(document.querySelectorAll("input[type='range'][data-key]"));
@@ -60,6 +65,32 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  if (clean.length !== 6) return { r: 0, g: 0, b: 0 };
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  const toHex = (value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixHex(colorA, colorB, ratio) {
+  const a = hexToRgb(colorA);
+  const b = hexToRgb(colorB);
+  const t = clamp(ratio, 0, 1);
+  return rgbToHex({
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+  });
+}
+
 function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -73,6 +104,11 @@ function syncInputs() {
   document.getElementById("textAreaHValue").textContent = `${Math.round(state.textAreaH)}%`;
   document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
     const selected = radio.value === state.mirrorMode;
+    radio.checked = selected;
+    radio.closest("label").classList.toggle("selected", selected);
+  });
+  document.querySelectorAll("input[name='textureMode']").forEach((radio) => {
+    const selected = radio.value === state.textureMode;
     radio.checked = selected;
     radio.closest("label").classList.toggle("selected", selected);
   });
@@ -429,24 +465,74 @@ function drawFilledShape(shape) {
   const scale = 0.2 + local * 0.8;
   const cx = shape.points.reduce((acc, point) => acc + point.x, 0) / shape.points.length;
   const cy = shape.points.reduce((acc, point) => acc + point.y, 0) / shape.points.length;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
 
   ctx.beginPath();
   for (let i = 0; i < shape.points.length; i += 1) {
     const point = shape.points[i];
     const x = cx + (point.x - cx) * scale;
     const y = cy + (point.y - cy) * scale;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
   ctx.closePath();
   ctx.globalAlpha = shape.alpha;
-  if (mode.outline) {
+
+  if (state.textureMode === "texture3d" && !mode.outline) {
+    const depth = state.textureDepth;
+    const darkInk = mixHex(mode.ink, "#000000", 0.3 + depth * 0.28);
+    const lightInk = mixHex(mode.ink, "#ffffff", 0.28 + depth * 0.32);
+    const specInk = mixHex(mode.ink, "#ffffff", 0.65);
+    const grad = ctx.createLinearGradient(minX, minY, maxX, maxY);
+    grad.addColorStop(0, lightInk);
+    grad.addColorStop(0.45, mode.ink);
+    grad.addColorStop(1, darkInk);
+
+    ctx.save();
+    ctx.shadowColor = mixHex(darkInk, "#000000", 0.5);
+    ctx.shadowBlur = 8 + depth * 20;
+    ctx.shadowOffsetX = 2 + depth * 5;
+    ctx.shadowOffsetY = 3 + depth * 6;
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = darkInk;
+    ctx.lineWidth = Math.max(1.5, state.lineThickness * (0.12 + depth * 0.16));
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.strokeStyle = specInk;
+    ctx.lineWidth = Math.max(1, state.lineThickness * (0.08 + depth * 0.12));
+    ctx.globalAlpha = shape.alpha * (0.28 + depth * 0.2);
+    ctx.stroke();
+    ctx.restore();
+  } else if (mode.outline) {
     ctx.strokeStyle = mode.ink;
     ctx.lineWidth = Math.max(1.5, state.lineThickness * 0.18);
     ctx.stroke();
   } else {
     ctx.fillStyle = mode.ink;
     ctx.fill();
+    if (mode.accent) {
+      const accent = mixHex(mode.accent, "#ffffff", 0.12);
+      ctx.save();
+      ctx.globalAlpha = shape.alpha * 0.22;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = Math.max(1.2, state.lineThickness * 0.1);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -623,7 +709,8 @@ function bindControls() {
       syncInputs();
       if (key.startsWith("textArea")) updateMarker();
       if (key === "canvasWidth" || key === "canvasHeight") resizeCanvas();
-      buildPattern();
+      if (key === "textureDepth") draw();
+      else buildPattern();
     });
   });
 
@@ -659,6 +746,16 @@ function bindControls() {
         label.classList.toggle("selected", label.querySelector("input").checked);
       });
       buildPattern();
+    });
+  });
+
+  document.querySelectorAll("input[name='textureMode']").forEach((radio) => {
+    radio.addEventListener("change", () => {
+      state.textureMode = radio.value;
+      document.querySelectorAll("#textureModeControls label").forEach((label) => {
+        label.classList.toggle("selected", label.querySelector("input").checked);
+      });
+      draw();
     });
   });
 
