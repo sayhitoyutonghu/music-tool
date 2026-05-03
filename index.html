@@ -65,6 +65,14 @@
               <input data-key="canvasHeight" class="value-input" type="number" />
             </div>
           </div>
+          <div class="bg-upload-row">
+            <label class="upload-label image-upload-label">
+              <input id="bgUpload" type="file" accept="image/*" />
+              Upload Background
+            </label>
+            <button id="clearBg" class="tiny-button" disabled>Clear</button>
+          </div>
+          <div id="bgFileName" class="file-meta">No background image</div>
         </section>
 
         <section class="control-block">
@@ -150,6 +158,34 @@
               <input type="radio" name="colorChoice" value="white outlines" />
               <span class="swatch outline-white"></span>
             </label>
+          </div>
+          <div class="field">
+            <label>Canvas Fill Color</label>
+            <input id="bgColorInput" type="color" value="#f8f8f6" />
+          </div>
+          <div class="field">
+            <label>Canvas Fill Alpha <span id="bgAlphaValue">1.00</span></label>
+            <input id="bgAlphaInput" type="range" min="0" max="1" step="0.01" value="1" />
+          </div>
+          <div class="field">
+            <label>Stroke Color</label>
+            <input id="strokeColorInput" type="color" value="#050505" />
+          </div>
+          <div class="field">
+            <label>Stroke Alpha <span id="strokeAlphaValue">1.00</span></label>
+            <input id="strokeAlphaInput" type="range" min="0" max="1" step="0.01" value="1" />
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="outlineToggle" type="checkbox" />
+            <span>Outline Stroke</span>
+          </label>
+          <div class="field">
+            <label>Outline Color</label>
+            <input id="outlineColorInput" type="color" value="#f8f8f6" />
+          </div>
+          <div class="field">
+            <label>Outline Alpha <span id="outlineAlphaValue">1.00</span></label>
+            <input id="outlineAlphaInput" type="range" min="0" max="1" step="0.01" value="1" />
           </div>
           <div class="field">
             <label>Density</label>

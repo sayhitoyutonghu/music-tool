@@ -16,6 +16,14 @@ const state = {
   visibleTime: 1.3,
   speed: 0.012,
   colorChoice: "black",
+  bgColor: "#f8f8f6",
+  bgAlpha: 1,
+  strokeColor: "#050505",
+  strokeAlpha: 1,
+  outlineStroke: false,
+  outlineColor: "#f8f8f6",
+  outlineAlpha: 1,
+  backgroundImage: null,
   animate: false,
   paths: [],
   blankZones: [],
@@ -33,14 +41,15 @@ let audioElement;
 let oscillator;
 let gainNode;
 let demoPlaying = false;
+let backgroundImageUrl;
 
 const colorModes = {
-  black: { bg: "#f8f8f6", ink: "#050505", alpha: 1, outline: false },
-  "faint black": { bg: "#f8f8f6", ink: "#050505", alpha: 0.35, outline: false },
-  "black outlines": { bg: "#f8f8f6", ink: "#050505", alpha: 1, outline: true },
-  white: { bg: "#050505", ink: "#ffffff", alpha: 1, outline: false },
-  "faint white": { bg: "#050505", ink: "#ffffff", alpha: 0.35, outline: false },
-  "white outlines": { bg: "#050505", ink: "#ffffff", alpha: 1, outline: true },
+  black: { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 1, outline: false },
+  "faint black": { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 0.35, outline: false },
+  "black outlines": { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 1, outline: true },
+  white: { bg: "#050505", bgAlpha: 1, stroke: "#ffffff", strokeAlpha: 1, outline: false },
+  "faint white": { bg: "#050505", bgAlpha: 1, stroke: "#ffffff", strokeAlpha: 0.35, outline: false },
+  "white outlines": { bg: "#050505", bgAlpha: 1, stroke: "#ffffff", strokeAlpha: 1, outline: true },
 };
 
 const sliders = Array.from(document.querySelectorAll("input[type='range'][data-key]"));
@@ -57,6 +66,57 @@ function chance(value) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function hexToRgba(hex, alpha = 1) {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => `${c}${c}`).join("") : clean;
+  const r = Number.parseInt(full.slice(0, 2), 16);
+  const g = Number.parseInt(full.slice(2, 4), 16);
+  const b = Number.parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+}
+
+function applyColorPreset(modeKey) {
+  const preset = colorModes[modeKey] || colorModes.black;
+  state.bgColor = preset.bg;
+  state.bgAlpha = preset.bgAlpha;
+  state.strokeColor = preset.stroke;
+  state.strokeAlpha = preset.strokeAlpha;
+  state.outlineStroke = preset.outline;
+  state.outlineColor = preset.bg;
+  state.outlineAlpha = preset.bgAlpha;
+
+  document.getElementById("bgColorInput").value = state.bgColor;
+  document.getElementById("bgAlphaInput").value = state.bgAlpha;
+  document.getElementById("strokeColorInput").value = state.strokeColor;
+  document.getElementById("strokeAlphaInput").value = state.strokeAlpha;
+  document.getElementById("outlineToggle").checked = state.outlineStroke;
+  document.getElementById("outlineColorInput").value = state.outlineColor;
+  document.getElementById("outlineAlphaInput").value = state.outlineAlpha;
+  document.getElementById("bgAlphaValue").textContent = state.bgAlpha.toFixed(2);
+  document.getElementById("strokeAlphaValue").textContent = state.strokeAlpha.toFixed(2);
+  document.getElementById("outlineAlphaValue").textContent = state.outlineAlpha.toFixed(2);
+}
+
+function drawImageCover(image) {
+  const imageRatio = image.width / image.height;
+  const canvasRatio = canvas.width / canvas.height;
+  let drawWidth;
+  let drawHeight;
+  let drawX = 0;
+  let drawY = 0;
+
+  if (imageRatio > canvasRatio) {
+    drawHeight = canvas.height;
+    drawWidth = drawHeight * imageRatio;
+    drawX = (canvas.width - drawWidth) / 2;
+  } else {
+    drawWidth = canvas.width;
+    drawHeight = drawWidth / imageRatio;
+    drawY = (canvas.height - drawHeight) / 2;
+  }
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
 function distance(a, b) {
@@ -361,7 +421,6 @@ function buildPattern() {
 
 function drawPath(points, width, progress, phase) {
   if (points.length < 2 || progress <= 0) return;
-  const mode = colorModes[state.colorChoice];
   const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
   const animatedNoise = state.animate ? Math.sin(performance.now() * 0.002 + phase) * state.audioLevel * 3 : 0;
 
@@ -377,28 +436,29 @@ function drawPath(points, width, progress, phase) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  if (mode.outline) {
-    ctx.strokeStyle = mode.ink;
-    ctx.globalAlpha = mode.alpha;
+  if (state.outlineStroke) {
+    ctx.strokeStyle = hexToRgba(state.strokeColor, state.strokeAlpha);
     ctx.lineWidth = width * 1.15;
     ctx.stroke();
-    ctx.strokeStyle = mode.bg;
-    ctx.globalAlpha = 1;
+    ctx.strokeStyle = hexToRgba(state.outlineColor, state.outlineAlpha);
     ctx.lineWidth = Math.max(1, width * 0.58);
     ctx.stroke();
   } else {
-    ctx.strokeStyle = mode.ink;
-    ctx.globalAlpha = mode.alpha;
+    ctx.strokeStyle = hexToRgba(state.strokeColor, state.strokeAlpha);
     ctx.lineWidth = width;
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
 }
 
 function draw() {
-  const mode = colorModes[state.colorChoice];
   ctx.save();
-  ctx.fillStyle = mode.bg;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (state.backgroundImage) {
+    drawImageCover(state.backgroundImage);
+  }
+
+  ctx.fillStyle = hexToRgba(state.bgColor, state.bgAlpha);
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   for (const path of state.paths) {
@@ -466,11 +526,60 @@ function showToggleMessage() {
   }, 2200);
 }
 
-function downloadPng() {
+function tryAnchorDownload(url, fileName) {
   const link = document.createElement("a");
-  link.download = `eternal-pattern-${Date.now()}.png`;
-  link.href = canvas.toDataURL("image/png");
-  link.click();
+  link.download = fileName;
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+  link.remove();
+}
+
+function downloadPng() {
+  const fileName = `eternal-pattern-${Date.now()}.png`;
+  const failMessage = "Download is blocked in this browser tab. A preview will open; right-click the image to save.";
+  const fileProtocolMode = window.location.protocol === "file:";
+
+  try {
+    const dataUrl = canvas.toDataURL("image/png");
+    tryAnchorDownload(dataUrl, fileName);
+    if (fileProtocolMode) {
+      window.open(dataUrl, "_blank", "noopener");
+      alert("You are in file:// mode. If download is blocked, use the opened image tab and Save As.");
+    }
+    return;
+  } catch (dataUrlErr) {
+    console.error(dataUrlErr);
+  }
+
+  try {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+          tryAnchorDownload(objectUrl, fileName);
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+        }
+        return;
+      }
+
+      try {
+        const dataUrl = canvas.toDataURL("image/png");
+        tryAnchorDownload(dataUrl, fileName);
+      } catch (dataErr) {
+        const fallback = window.open("", "_blank");
+        if (fallback) fallback.document.write(`<title>${fileName}</title><p style="font-family:monospace;padding:16px;">${failMessage}</p>`);
+        alert("Download failed. This canvas may be blocked by browser security (cross-origin image).");
+        console.error(dataErr);
+      }
+    }, "image/png");
+  } catch (blobErr) {
+    alert("Download failed. This canvas may be blocked by browser security (cross-origin image).");
+    console.error(blobErr);
+  }
 }
 
 async function ensureAudioContext() {
@@ -563,6 +672,38 @@ async function toggleUploadedAudio() {
   }
 }
 
+function clearBackgroundImage() {
+  if (backgroundImageUrl) {
+    URL.revokeObjectURL(backgroundImageUrl);
+    backgroundImageUrl = undefined;
+  }
+  state.backgroundImage = null;
+  document.getElementById("bgUpload").value = "";
+  document.getElementById("clearBg").disabled = true;
+  document.getElementById("bgFileName").textContent = "No background image";
+  draw();
+}
+
+async function handleBackgroundUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (backgroundImageUrl) URL.revokeObjectURL(backgroundImageUrl);
+  const imageUrl = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    image.src = imageUrl;
+    await image.decode();
+    state.backgroundImage = image;
+    backgroundImageUrl = imageUrl;
+    document.getElementById("clearBg").disabled = false;
+    document.getElementById("bgFileName").textContent = file.name;
+    draw();
+  } catch {
+    URL.revokeObjectURL(imageUrl);
+    event.target.value = "";
+  }
+}
+
 function bindControls() {
   sliders.forEach((input) => {
     input.addEventListener("input", () => {
@@ -592,6 +733,7 @@ function bindControls() {
   document.querySelectorAll("input[name='colorChoice']").forEach((radio) => {
     radio.addEventListener("change", () => {
       state.colorChoice = radio.value;
+      applyColorPreset(state.colorChoice);
       document.getElementById("selectedColorTag").textContent = radio.value;
       document.querySelectorAll(".color-option").forEach((label) => {
         label.classList.toggle("selected", label.querySelector("input").checked);
@@ -626,10 +768,44 @@ function bindControls() {
 
   document.getElementById("generateButton").addEventListener("click", buildPattern);
   document.getElementById("downloadButton").addEventListener("click", downloadPng);
+  document.getElementById("bgUpload").addEventListener("change", handleBackgroundUpload);
+  document.getElementById("clearBg").addEventListener("click", clearBackgroundImage);
   document.getElementById("demoAudio").addEventListener("click", toggleDemoAudio);
   document.getElementById("audioUpload").addEventListener("change", handleAudioUpload);
   document.getElementById("playUploaded").addEventListener("click", toggleUploadedAudio);
   document.getElementById("mobileToggle").addEventListener("click", () => controls.classList.toggle("hideControls"));
+
+  document.getElementById("bgColorInput").addEventListener("input", (event) => {
+    state.bgColor = event.target.value;
+    draw();
+  });
+  document.getElementById("bgAlphaInput").addEventListener("input", (event) => {
+    state.bgAlpha = Number(event.target.value);
+    document.getElementById("bgAlphaValue").textContent = state.bgAlpha.toFixed(2);
+    draw();
+  });
+  document.getElementById("strokeColorInput").addEventListener("input", (event) => {
+    state.strokeColor = event.target.value;
+    draw();
+  });
+  document.getElementById("strokeAlphaInput").addEventListener("input", (event) => {
+    state.strokeAlpha = Number(event.target.value);
+    document.getElementById("strokeAlphaValue").textContent = state.strokeAlpha.toFixed(2);
+    draw();
+  });
+  document.getElementById("outlineToggle").addEventListener("change", (event) => {
+    state.outlineStroke = event.target.checked;
+    draw();
+  });
+  document.getElementById("outlineColorInput").addEventListener("input", (event) => {
+    state.outlineColor = event.target.value;
+    draw();
+  });
+  document.getElementById("outlineAlphaInput").addEventListener("input", (event) => {
+    state.outlineAlpha = Number(event.target.value);
+    document.getElementById("outlineAlphaValue").textContent = state.outlineAlpha.toFixed(2);
+    draw();
+  });
 
   window.addEventListener("keydown", (event) => {
     if (event.key.toLowerCase() !== "a") return;
@@ -644,6 +820,7 @@ function bindControls() {
   window.addEventListener("resize", () => updateMarker(true));
 }
 
+applyColorPreset(state.colorChoice);
 syncInputs();
 resizeCanvas();
 bindControls();
