@@ -1,4 +1,4 @@
-# Eternal Research Pattern Tool Clone
+# untranslated tool
 
 A standalone Canvas recreation of the Eternal Research pattern generator experience.
 

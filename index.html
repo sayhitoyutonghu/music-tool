@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Eternal Research Pattern Tool Clone</title>
+    <title>untranslated tool</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -73,6 +73,10 @@
             <button id="clearBg" class="tiny-button" disabled>Clear</button>
           </div>
           <div id="bgFileName" class="file-meta">No background image</div>
+          <label class="switch-row style-switch-row">
+            <input id="startFromBottomToggle" type="checkbox" checked />
+            <span>Start Pattern From Bottom</span>
+          </label>
         </section>
 
         <section class="control-block">
@@ -87,6 +91,98 @@
             <label>Text Area Height <span id="textAreaHValue"></span></label>
             <input data-key="textAreaH" type="range" min="0" max="90" step="1" />
           </div>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Logo</p>
+          </div>
+          <div class="bg-upload-row">
+            <label class="upload-label image-upload-label">
+              <input id="logoUpload" type="file" accept="image/*" />
+              Upload Logo
+            </label>
+            <button id="clearLogo" class="tiny-button" disabled>Clear</button>
+          </div>
+          <div id="logoFileName" class="file-meta">No logo image</div>
+          <div class="field">
+            <label>Logo X (Center %)</label>
+            <input data-key="logoX" type="range" min="5" max="95" step="1" />
+          </div>
+          <div class="field">
+            <label>Logo Y (Center %)</label>
+            <input data-key="logoY" type="range" min="5" max="95" step="1" />
+          </div>
+          <div class="field">
+            <label>Logo Width %</label>
+            <input data-key="logoW" type="range" min="5" max="70" step="1" />
+          </div>
+          <div class="field">
+            <label>Logo Height %</label>
+            <input data-key="logoH" type="range" min="5" max="70" step="1" />
+          </div>
+          <div class="field">
+            <label>Logo Opacity</label>
+            <input data-key="logoOpacity" type="range" min="0" max="1" step="0.01" />
+          </div>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Circle Scaffold</p>
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="circleScaffoldToggle" type="checkbox" checked />
+            <span>Enable Circle-Based Layout</span>
+          </label>
+          <label class="switch-row style-switch-row">
+            <input id="showGuidesToggle" type="checkbox" />
+            <span>Show Construction Circles</span>
+          </label>
+          <div class="field">
+            <label>Circle Density</label>
+            <input data-key="circleGuideDensity" type="range" min="0.1" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Circle Influence</label>
+            <input data-key="circleGuideInfluence" type="range" min="0" max="1" step="0.01" />
+          </div>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Mirror</p>
+          </div>
+          <div class="radio-stack" id="mirrorModeControls">
+            <label class="radio-pill">
+              <input type="radio" name="mirrorMode" value="none" />
+              <span>No Mirror (Single Side)</span>
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="mirrorMode" value="horizontal" checked />
+              <span>Left / Right Mirror</span>
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="mirrorMode" value="vertical" />
+              <span>Top / Bottom Mirror</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="control-block">
+          <div class="control-title">
+            <p>Text Pattern</p>
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="textSeedToggle" type="checkbox" checked />
+            <span>Generate From Text</span>
+          </label>
+          <div class="field">
+            <label>Name / Text</label>
+            <input id="textSeedInput" type="text" class="text-seed-input" placeholder="Type a name..." />
+          </div>
+          <button id="applyTextSeed" class="tiny-button">Apply Text Pattern</button>
+          <div id="textSeedMeta" class="file-meta">Text seed inactive</div>
         </section>
 
         <section id="motionControls" class="control-block closed">
@@ -207,6 +303,26 @@
             <label>Line Thickness</label>
             <input data-key="lineThickness" type="range" min="2" max="18" step="0.1" />
           </div>
+          <div class="field">
+            <label>Width Variation</label>
+            <input data-key="widthVariation" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Taper Strength</label>
+            <input data-key="taperStrength" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Curve Smoothness</label>
+            <input data-key="curveSmoothness" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="crayonToggle" type="checkbox" />
+            <span>Rough Crayon Effect</span>
+          </label>
+          <div class="field">
+            <label>Crayon Roughness</label>
+            <input data-key="crayonStrength" type="range" min="0" max="1" step="0.01" />
+          </div>
         </section>
 
         <section class="control-block actions">
@@ -222,6 +338,7 @@
     <main id="patternContainer" class="pattern padded">
       <canvas id="patternCanvas"></canvas>
       <div id="textAreaMarker"></div>
+      <div id="logoPlaceholderMarker"></div>
     </main>
 
     <script src="./app.js"></script>

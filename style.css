@@ -462,6 +462,17 @@ input[type="number"]::-webkit-outer-spin-button {
   font-size: 11px;
 }
 
+.text-seed-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  outline: none;
+  background: var(--light-gray);
+  color: var(--fg-color);
+}
+
 .tiny-button:disabled {
   opacity: 0.45;
   pointer-events: none;
@@ -503,6 +514,25 @@ input[type="number"]::-webkit-outer-spin-button {
 .style-switch-row {
   justify-content: flex-start;
   color: var(--fg-color);
+}
+
+.radio-stack {
+  display: grid;
+  gap: 6px;
+}
+
+.radio-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--light-gray);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.radio-pill input[type="radio"] {
+  margin: 0;
 }
 
 .color-option input {
@@ -653,6 +683,18 @@ canvas {
   pointer-events: none;
   border: 0.5px solid red;
   background: rgba(255, 0, 0, 0.12);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+}
+
+#logoPlaceholderMarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  pointer-events: none;
+  border: 1px dashed rgba(0, 180, 255, 0.9);
+  background: rgba(0, 180, 255, 0.08);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
   opacity: 0;
   transform: translate(-50%, -50%);
 }
