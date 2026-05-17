@@ -638,17 +638,6 @@ input[type="color"] {
   background: var(--cta-hover-color);
 }
 
-.wordmark {
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  height: 40px;
-  color: var(--fg-color);
-  letter-spacing: 0.09em;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 12px;
-}
-
 .pattern {
   position: relative;
   flex: 1 1 auto;

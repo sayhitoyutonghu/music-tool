@@ -810,6 +810,44 @@ function drawGuideCircles() {
   ctx.restore();
 }
 
+function drawCrayonPaperTexture() {
+  if (!state.crayonEffect) return;
+  const rough = clamp(state.crayonStrength, 0, 1);
+  if (rough < 0.02) return;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const grainCount = Math.floor((w * h) / 2400 * (0.28 + rough * 1.45));
+  const sizeMin = 0.6;
+  const sizeMax = 1.8 + rough * 1.7;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  for (let i = 0; i < grainCount; i += 1) {
+    const x = stableNoise(i * 12.989 + 17.3) * w;
+    const y = stableNoise(i * 78.233 + 91.7) * h;
+    const tone = stableNoise(i * 35.173 + 6.4);
+    if (tone < 0.42) continue;
+    const size = sizeMin + stableNoise(i * 9.17 + 2.1) * (sizeMax - sizeMin);
+    const alpha = (0.018 + rough * 0.06) * (0.55 + tone * 0.75);
+    ctx.fillStyle = `rgba(0,0,0,${alpha.toFixed(3)})`;
+    ctx.fillRect(x, y, size, size * (0.75 + stableNoise(i * 5.91) * 0.7));
+  }
+
+  ctx.globalCompositeOperation = "screen";
+  for (let i = 0; i < grainCount * 0.72; i += 1) {
+    const x = stableNoise(i * 51.731 + 33.2) * w;
+    const y = stableNoise(i * 19.117 + 44.8) * h;
+    const tone = stableNoise(i * 7.717 + 12.6);
+    if (tone < 0.58) continue;
+    const size = sizeMin + stableNoise(i * 4.63 + 8.5) * (sizeMax - sizeMin);
+    const alpha = (0.014 + rough * 0.05) * (0.5 + tone * 0.7);
+    ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+    ctx.fillRect(x, y, size, size * (0.7 + stableNoise(i * 6.21) * 0.8));
+  }
+  ctx.restore();
+}
+
 function draw() {
   ctx.save();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -828,6 +866,7 @@ function draw() {
       drawPath(branch.points, branch.width, clamp(state.progress * 1.2 - 0.15, 0, 1), path.phase + 1.7);
     }
   }
+  drawCrayonPaperTexture();
   drawLogoImage();
   ctx.restore();
 }
