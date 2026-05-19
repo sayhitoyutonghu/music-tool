@@ -32,6 +32,16 @@ const state = {
   useTextSeed: true,
   crayonEffect: false,
   crayonStrength: 0.45,
+  fxWaxTexture: true,
+  fxWaxStrength: 0.52,
+  fxEdgeLightShadow: true,
+  fxEdgeStrength: 0.48,
+  fxBubbleBlur: true,
+  fxBubbleStrength: 0.45,
+  fxEmbossDepth: false,
+  fxEmbossStrength: 0.34,
+  fxHalftoneNoise: false,
+  fxHalftoneMix: 0.38,
   visibleTime: 1.3,
   speed: 0.012,
   colorChoice: "black",
@@ -64,6 +74,7 @@ let gainNode;
 let demoPlaying = false;
 let backgroundImageUrl;
 let logoImageUrl;
+let halftoneNoiseCache = { key: "", canvas: null };
 
 const colorModes = {
   black: { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 1, outline: false },
@@ -168,6 +179,27 @@ function hexToRgba(hex, alpha = 1) {
   const g = Number.parseInt(full.slice(2, 4), 16);
   const b = Number.parseInt(full.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+}
+
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.split("").map((c) => `${c}${c}`).join("") : clean;
+  return {
+    r: Number.parseInt(full.slice(0, 2), 16),
+    g: Number.parseInt(full.slice(2, 4), 16),
+    b: Number.parseInt(full.slice(4, 6), 16),
+  };
+}
+
+function mixRgb(colorA, colorB, amount) {
+  const a = hexToRgb(colorA);
+  const b = hexToRgb(colorB);
+  const t = clamp(amount, 0, 1);
+  return {
+    r: Math.round(a.r * (1 - t) + b.r * t),
+    g: Math.round(a.g * (1 - t) + b.g * t),
+    b: Math.round(a.b * (1 - t) + b.b * t),
+  };
 }
 
 function applyColorPreset(modeKey) {
@@ -691,7 +723,8 @@ function strokePathSegments(points, width, drawCount, phase, color, alpha) {
   const animatedNoise = state.animate ? state.audioLevel * 2.2 : 0;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  const rough = state.crayonEffect ? clamp(state.crayonStrength, 0, 1) : 0;
+  const rough = state.fxWaxTexture ? clamp(state.fxWaxStrength, 0, 1) : 0;
+  const edgeStrength = state.fxEdgeLightShadow ? clamp(state.fxEdgeStrength, 0, 1) : 0;
 
   for (let i = 1; i < drawCount; i += 1) {
     const p0 = points[i - 1];
@@ -708,6 +741,47 @@ function strokePathSegments(points, width, drawCount, phase, color, alpha) {
       ctx.moveTo(p0.x + baseJitterX, p0.y + baseJitterY);
       ctx.lineTo(p1.x + baseJitterX, p1.y + baseJitterY);
       ctx.stroke();
+
+      if (edgeStrength > 0.01) {
+        const vxClean = p1.x - p0.x;
+        const vyClean = p1.y - p0.y;
+        const vLenClean = Math.hypot(vxClean, vyClean) || 1;
+        const nxClean = -vyClean / vLenClean;
+        const nyClean = vxClean / vLenClean;
+        const lightDot = nxClean * -0.72 + nyClean * -0.46;
+        const highlightSign = lightDot >= 0 ? 1 : -1;
+        const edgeOffset = currentWidth * (0.08 + edgeStrength * 0.22);
+        const edgeWidth = Math.max(0.3, currentWidth * (0.08 + edgeStrength * 0.11));
+
+        ctx.globalCompositeOperation = "multiply";
+        ctx.strokeStyle = `rgba(0,0,0,${(alpha * (0.08 + edgeStrength * 0.22)).toFixed(3)})`;
+        ctx.lineWidth = edgeWidth;
+        ctx.beginPath();
+        ctx.moveTo(
+          p0.x - nxClean * edgeOffset * highlightSign + baseJitterX,
+          p0.y - nyClean * edgeOffset * highlightSign + baseJitterY,
+        );
+        ctx.lineTo(
+          p1.x - nxClean * edgeOffset * highlightSign + baseJitterX,
+          p1.y - nyClean * edgeOffset * highlightSign + baseJitterY,
+        );
+        ctx.stroke();
+
+        ctx.globalCompositeOperation = "screen";
+        ctx.strokeStyle = `rgba(255,255,255,${(alpha * (0.1 + edgeStrength * 0.24)).toFixed(3)})`;
+        ctx.lineWidth = edgeWidth * 0.92;
+        ctx.beginPath();
+        ctx.moveTo(
+          p0.x + nxClean * edgeOffset * highlightSign + baseJitterX,
+          p0.y + nyClean * edgeOffset * highlightSign + baseJitterY,
+        );
+        ctx.lineTo(
+          p1.x + nxClean * edgeOffset * highlightSign + baseJitterX,
+          p1.y + nyClean * edgeOffset * highlightSign + baseJitterY,
+        );
+        ctx.stroke();
+        ctx.globalCompositeOperation = "source-over";
+      }
       continue;
     }
 
@@ -743,26 +817,28 @@ function strokePathSegments(points, width, drawCount, phase, color, alpha) {
       ctx.stroke();
     }
 
-    const edgeOffset = currentWidth * (0.16 + rough * 0.2);
-    const edgeWidth = Math.max(0.35, currentWidth * (0.18 + rough * 0.1));
+    if (edgeStrength > 0.01) {
+      const edgeOffset = currentWidth * (0.16 + rough * 0.14 + edgeStrength * 0.13);
+      const edgeWidth = Math.max(0.35, currentWidth * (0.14 + rough * 0.08 + edgeStrength * 0.1));
 
-    ctx.globalCompositeOperation = "multiply";
-    ctx.strokeStyle = `rgba(0,0,0,${(alpha * (0.18 + rough * 0.26)).toFixed(3)})`;
-    ctx.lineWidth = edgeWidth;
-    ctx.beginPath();
-    ctx.moveTo(p0.x - nx * edgeOffset * highlightSign + baseJitterX, p0.y - ny * edgeOffset * highlightSign + baseJitterY);
-    ctx.lineTo(p1.x - nx * edgeOffset * highlightSign + baseJitterX, p1.y - ny * edgeOffset * highlightSign + baseJitterY);
-    ctx.stroke();
+      ctx.globalCompositeOperation = "multiply";
+      ctx.strokeStyle = `rgba(0,0,0,${(alpha * (0.1 + rough * 0.1 + edgeStrength * 0.18)).toFixed(3)})`;
+      ctx.lineWidth = edgeWidth;
+      ctx.beginPath();
+      ctx.moveTo(p0.x - nx * edgeOffset * highlightSign + baseJitterX, p0.y - ny * edgeOffset * highlightSign + baseJitterY);
+      ctx.lineTo(p1.x - nx * edgeOffset * highlightSign + baseJitterX, p1.y - ny * edgeOffset * highlightSign + baseJitterY);
+      ctx.stroke();
 
-    ctx.globalCompositeOperation = "screen";
-    ctx.strokeStyle = `rgba(255,255,255,${(alpha * (0.2 + rough * 0.34)).toFixed(3)})`;
-    ctx.lineWidth = Math.max(0.3, edgeWidth * 0.88);
-    ctx.beginPath();
-    ctx.moveTo(p0.x + nx * edgeOffset * highlightSign + baseJitterX, p0.y + ny * edgeOffset * highlightSign + baseJitterY);
-    ctx.lineTo(p1.x + nx * edgeOffset * highlightSign + baseJitterX, p1.y + ny * edgeOffset * highlightSign + baseJitterY);
-    ctx.stroke();
+      ctx.globalCompositeOperation = "screen";
+      ctx.strokeStyle = `rgba(255,255,255,${(alpha * (0.12 + rough * 0.12 + edgeStrength * 0.2)).toFixed(3)})`;
+      ctx.lineWidth = Math.max(0.3, edgeWidth * 0.88);
+      ctx.beginPath();
+      ctx.moveTo(p0.x + nx * edgeOffset * highlightSign + baseJitterX, p0.y + ny * edgeOffset * highlightSign + baseJitterY);
+      ctx.lineTo(p1.x + nx * edgeOffset * highlightSign + baseJitterX, p1.y + ny * edgeOffset * highlightSign + baseJitterY);
+      ctx.stroke();
 
-    ctx.globalCompositeOperation = "source-over";
+      ctx.globalCompositeOperation = "source-over";
+    }
     const speckleChance = 0.1 + rough * 0.25;
     if (stableNoise(i * 2.17 + phase * 5.9) < speckleChance) {
       const textureDots = 2 + Math.floor(rough * 3);
@@ -810,9 +886,374 @@ function drawGuideCircles() {
   ctx.restore();
 }
 
+function strokePolyline(points, width, progress, color, alpha, options = {}, targetCtx = ctx) {
+  if (points.length < 2 || progress <= 0) return;
+  const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
+  const offsetX = options.offsetX || 0;
+  const offsetY = options.offsetY || 0;
+  targetCtx.save();
+  targetCtx.lineCap = "round";
+  targetCtx.lineJoin = "round";
+  targetCtx.strokeStyle = hexToRgba(color, alpha);
+  const expandPx = Math.max(0, options.expandPx || 0);
+  targetCtx.lineWidth = Math.max(0.2, width * (options.widthScale || 1) + expandPx * 2);
+  if (options.blur && options.blur > 0) targetCtx.filter = `blur(${options.blur.toFixed(2)}px)`;
+  targetCtx.beginPath();
+  targetCtx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
+  for (let i = 1; i < drawCount; i += 1) {
+    const point = points[i];
+    targetCtx.lineTo(point.x + offsetX, point.y + offsetY);
+  }
+  targetCtx.stroke();
+  targetCtx.restore();
+}
+
+function forEachPathSegment(callback) {
+  for (const path of state.paths) {
+    callback(path.points, path.width, state.progress, path.phase);
+    const branchProgress = clamp(state.progress * 1.2 - 0.15, 0, 1);
+    for (const branch of path.branches) {
+      callback(branch.points, branch.width, branchProgress, path.phase + 1.7);
+    }
+  }
+}
+
+function drawPathMask(targetCtx, widthScale = 1, expandPx = 0) {
+  targetCtx.save();
+  targetCtx.clearRect(0, 0, targetCtx.canvas.width, targetCtx.canvas.height);
+  paintPathMask(targetCtx, widthScale, expandPx);
+  targetCtx.restore();
+}
+
+function paintPathMask(targetCtx, widthScale = 1, expandPx = 0, alpha = 1) {
+  targetCtx.save();
+  targetCtx.strokeStyle = "#ffffff";
+  targetCtx.globalAlpha = clamp(alpha, 0, 1);
+  targetCtx.lineCap = "round";
+  targetCtx.lineJoin = "round";
+  forEachPathSegment((points, width, progress) => {
+    if (points.length < 2 || progress <= 0) return;
+    const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
+    targetCtx.lineWidth = Math.max(0.2, width * widthScale + Math.max(0, expandPx) * 2);
+    targetCtx.beginPath();
+    targetCtx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < drawCount; i += 1) {
+      targetCtx.lineTo(points[i].x, points[i].y);
+    }
+    targetCtx.stroke();
+  });
+  targetCtx.restore();
+}
+
+function createFxCanvas(scale = 1) {
+  const fxCanvas = document.createElement("canvas");
+  fxCanvas.width = Math.max(1, Math.round(canvas.width * scale));
+  fxCanvas.height = Math.max(1, Math.round(canvas.height * scale));
+  return fxCanvas;
+}
+
+function drawExpandedPathMask(widthScale, expandPx, blurPx = 0, scale = 1) {
+  const maskCanvas = createFxCanvas(scale);
+  const maskCtx = maskCanvas.getContext("2d");
+  maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+  maskCtx.save();
+  maskCtx.scale(scale, scale);
+  if (blurPx > 0) maskCtx.filter = `blur(${(blurPx * scale).toFixed(2)}px)`;
+  paintPathMask(maskCtx, widthScale, expandPx);
+  maskCtx.restore();
+  return maskCanvas;
+}
+
+function thresholdMask(sourceCanvas, alphaCutoff = 24) {
+  const sourceCtx = sourceCanvas.getContext("2d");
+  const image = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const data = image.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3] >= alphaCutoff ? 255 : 0;
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+    data[i + 3] = alpha;
+  }
+
+  const maskCanvas = createFxCanvas();
+  maskCanvas.width = sourceCanvas.width;
+  maskCanvas.height = sourceCanvas.height;
+  maskCanvas.getContext("2d").putImageData(image, 0, 0);
+  return maskCanvas;
+}
+
+function erodeMask(sourceCanvas, iterations) {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const sourceCtx = sourceCanvas.getContext("2d");
+  const source = sourceCtx.getImageData(0, 0, width, height).data;
+  let alpha = new Uint8Array(width * height);
+  for (let i = 0, p = 0; i < source.length; i += 4, p += 1) {
+    alpha[p] = source[i + 3] > 0 ? 255 : 0;
+  }
+
+  const passes = Math.max(0, Math.round(iterations));
+  for (let pass = 0; pass < passes; pass += 1) {
+    const next = new Uint8Array(alpha.length);
+    for (let y = 1; y < height - 1; y += 1) {
+      const row = y * width;
+      for (let x = 1; x < width - 1; x += 1) {
+        const p = row + x;
+        if (
+          alpha[p] &&
+          alpha[p - 1] &&
+          alpha[p + 1] &&
+          alpha[p - width] &&
+          alpha[p + width] &&
+          alpha[p - width - 1] &&
+          alpha[p - width + 1] &&
+          alpha[p + width - 1] &&
+          alpha[p + width + 1]
+        ) {
+          next[p] = 255;
+        }
+      }
+    }
+    alpha = next;
+  }
+
+  const output = sourceCtx.createImageData(width, height);
+  for (let p = 0, i = 0; p < alpha.length; p += 1, i += 4) {
+    output.data[i] = 255;
+    output.data[i + 1] = 255;
+    output.data[i + 2] = 255;
+    output.data[i + 3] = alpha[p];
+  }
+
+  const erodedCanvas = createFxCanvas();
+  erodedCanvas.width = width;
+  erodedCanvas.height = height;
+  erodedCanvas.getContext("2d").putImageData(output, 0, 0);
+  return erodedCanvas;
+}
+
+function subtractMask(baseMask, subtractCanvas) {
+  const result = createFxCanvas();
+  result.width = baseMask.width;
+  result.height = baseMask.height;
+  const resultCtx = result.getContext("2d");
+  resultCtx.drawImage(baseMask, 0, 0);
+  resultCtx.globalCompositeOperation = "destination-out";
+  resultCtx.drawImage(subtractCanvas, 0, 0);
+  return result;
+}
+
+function tintedMaskLayer(maskCanvas, color, alpha) {
+  const layer = createFxCanvas();
+  layer.width = maskCanvas.width;
+  layer.height = maskCanvas.height;
+  const layerCtx = layer.getContext("2d");
+  layerCtx.drawImage(maskCanvas, 0, 0);
+  layerCtx.globalCompositeOperation = "source-in";
+  layerCtx.fillStyle = hexToRgba(color, alpha);
+  layerCtx.fillRect(0, 0, layer.width, layer.height);
+  return layer;
+}
+
+function drawFxLayer(layer, composite = "source-over", alpha = 1) {
+  ctx.save();
+  ctx.globalCompositeOperation = composite;
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.drawImage(layer, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+function drawEdgeLightShadowFx() {
+  if (!state.fxEdgeLightShadow) return;
+  const amount = clamp(state.fxEdgeStrength, 0, 1);
+  if (amount < 0.01) return;
+
+  const lightOffset = 0.4 + amount * 2.8;
+  const blur = 0.8 + amount * 4.8;
+  const light = mixRgb(state.strokeColor, "#ffffff", 0.8);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(
+      points,
+      width,
+      progress,
+      `#${light.r.toString(16).padStart(2, "0")}${light.g.toString(16).padStart(2, "0")}${light.b.toString(16).padStart(2, "0")}`,
+      (0.1 + amount * 0.36) * state.strokeAlpha,
+      { widthScale: 1.55 + amount * 0.5, blur, offsetX: -lightOffset, offsetY: -lightOffset },
+    );
+  });
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, "#000000", 0.08 + amount * 0.32, {
+      widthScale: 1.62 + amount * 0.56,
+      blur: blur * 0.92,
+      offsetX: lightOffset,
+      offsetY: lightOffset,
+    });
+  });
+  ctx.restore();
+}
+
+function drawBubbleBlurFx() {
+  if (!state.fxBubbleBlur) return;
+  const amount = clamp(state.fxBubbleStrength, 0, 1);
+  if (amount < 0.01) return;
+
+  const bubble = mixRgb(state.strokeColor, "#f4e3ff", 0.62);
+  const bubbleHex = `#${bubble.r.toString(16).padStart(2, "0")}${bubble.g.toString(16).padStart(2, "0")}${bubble.b.toString(16).padStart(2, "0")}`;
+  const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
+  const bodyExpandPx = 22 + amount * 26;
+  const mergeBlurPx = 4 + amount * 8;
+  const outlinePx = 8 + amount * 5;
+  const shellWidthScale = 1.08 + amount * 0.22;
+
+  const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, mergeBlurPx, scale);
+  const bodyMask = thresholdMask(softUnion, 18 + amount * 14);
+  const innerBodyMask = erodeMask(bodyMask, outlinePx * scale);
+  const hardOuterEdgeMask = subtractMask(bodyMask, innerBodyMask);
+
+  const outerGlowMask = drawExpandedPathMask(shellWidthScale, bodyExpandPx + 10 + amount * 8, 8 + amount * 16, scale);
+  drawFxLayer(tintedMaskLayer(outerGlowMask, "#ffffff", 0.22 + amount * 0.42), "screen", 0.78);
+
+  const bodyFill = tintedMaskLayer(bodyMask, bubbleHex, 0.2 + amount * 0.36);
+  const bodyFillCtx = bodyFill.getContext("2d");
+  bodyFillCtx.save();
+  bodyFillCtx.globalCompositeOperation = "screen";
+  bodyFillCtx.filter = `blur(${(3 + amount * 7) * scale}px)`;
+  bodyFillCtx.drawImage(tintedMaskLayer(innerBodyMask, "#ffffff", 0.18 + amount * 0.24), 0, 0);
+  bodyFillCtx.restore();
+  drawFxLayer(bodyFill, "source-over", 0.82 + amount * 0.16);
+
+  const shadowMask = drawExpandedPathMask(shellWidthScale, Math.max(2, bodyExpandPx - outlinePx * 0.8), 5 + amount * 6, scale);
+  drawFxLayer(tintedMaskLayer(shadowMask, "#000000", 0.08 + amount * 0.18), "multiply", 0.7);
+
+  const hardEdgeLayer = tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.92);
+  const hardEdgeCtx = hardEdgeLayer.getContext("2d");
+  hardEdgeCtx.save();
+  hardEdgeCtx.globalCompositeOperation = "screen";
+  hardEdgeCtx.filter = `blur(${Math.max(0.7, 1.3 * scale).toFixed(2)}px)`;
+  hardEdgeCtx.drawImage(tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.65), 0, 0);
+  hardEdgeCtx.restore();
+  drawFxLayer(hardEdgeLayer, "source-over", 1);
+}
+
+function drawEmbossFx() {
+  if (!state.fxEmbossDepth) return;
+  const amount = clamp(state.fxEmbossStrength, 0, 1);
+  if (amount < 0.01) return;
+
+  const offset = 0.45 + amount * 3.2;
+  const blur = 0.6 + amount * 2.8;
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, "#ffffff", 0.09 + amount * 0.24, {
+      widthScale: 1.02 + amount * 0.18,
+      blur,
+      offsetX: -offset,
+      offsetY: -offset,
+    });
+  });
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, "#000000", 0.1 + amount * 0.28, {
+      widthScale: 1.04 + amount * 0.22,
+      blur,
+      offsetX: offset,
+      offsetY: offset,
+    });
+  });
+  ctx.restore();
+}
+
+function buildHalftoneNoiseTexture() {
+  const key = [
+    canvas.width,
+    canvas.height,
+    state.fxHalftoneMix.toFixed(3),
+    state.strokeColor,
+    state.seed,
+  ].join("|");
+  if (halftoneNoiseCache.canvas && halftoneNoiseCache.key === key) return halftoneNoiseCache.canvas;
+
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = canvas.width;
+  textureCanvas.height = canvas.height;
+  const tctx = textureCanvas.getContext("2d");
+  tctx.clearRect(0, 0, textureCanvas.width, textureCanvas.height);
+
+  const mix = clamp(state.fxHalftoneMix, 0, 1);
+  const baseTone = mixRgb(state.strokeColor, "#ffffff", 0.28);
+  const tone = `rgba(${baseTone.r}, ${baseTone.g}, ${baseTone.b}, `;
+
+  const dotStep = Math.max(5, Math.round(16 - mix * 9));
+  const dotRadius = 0.8 + mix * 1.9;
+  for (let y = dotStep * 0.5; y < textureCanvas.height; y += dotStep) {
+    for (let x = dotStep * 0.5; x < textureCanvas.width; x += dotStep) {
+      const wave = stableNoise(x * 0.017 + y * 0.029 + state.seed * 0.0001);
+      const alpha = (0.03 + mix * 0.22) * (0.25 + wave * 0.95);
+      if (alpha < 0.02) continue;
+      tctx.fillStyle = `${tone}${alpha.toFixed(3)})`;
+      tctx.beginPath();
+      tctx.arc(x, y, dotRadius * (0.72 + wave * 0.6), 0, Math.PI * 2);
+      tctx.fill();
+    }
+  }
+
+  const noiseCount = Math.floor((textureCanvas.width * textureCanvas.height) / 2600 * (0.3 + (1 - mix) * 1.4));
+  for (let i = 0; i < noiseCount; i += 1) {
+    const x = stableNoise(i * 11.73 + state.seed * 0.0017) * textureCanvas.width;
+    const y = stableNoise(i * 6.19 + state.seed * 0.0007) * textureCanvas.height;
+    const shade = stableNoise(i * 17.83 + state.seed * 0.0013);
+    const alpha = (0.01 + (1 - mix) * 0.12) * (0.4 + shade * 0.8);
+    tctx.fillStyle = shade > 0.52
+      ? `rgba(255,255,255,${alpha.toFixed(3)})`
+      : `rgba(0,0,0,${(alpha * 0.9).toFixed(3)})`;
+    tctx.fillRect(x, y, 1 + shade * 1.6, 1 + stableNoise(i * 5.77) * 1.5);
+  }
+
+  halftoneNoiseCache = { key, canvas: textureCanvas };
+  return textureCanvas;
+}
+
+function drawHalftoneNoiseFx() {
+  if (!state.fxHalftoneNoise) return;
+  if (state.animate && state.progress < 0.99) return;
+
+  const texture = buildHalftoneNoiseTexture();
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = canvas.width;
+  maskCanvas.height = canvas.height;
+  const mctx = maskCanvas.getContext("2d");
+  drawPathMask(mctx, 1.36);
+
+  const layer = document.createElement("canvas");
+  layer.width = canvas.width;
+  layer.height = canvas.height;
+  const lctx = layer.getContext("2d");
+  lctx.drawImage(texture, 0, 0);
+  lctx.globalCompositeOperation = "destination-in";
+  lctx.drawImage(maskCanvas, 0, 0);
+
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(layer, 0, 0);
+  ctx.restore();
+}
+
 function drawCrayonPaperTexture() {
-  if (!state.crayonEffect) return;
-  const rough = clamp(state.crayonStrength, 0, 1);
+  if (!state.fxWaxTexture) return;
+  const rough = clamp(state.fxWaxStrength, 0, 1);
   if (rough < 0.02) return;
 
   const w = canvas.width;
@@ -866,6 +1307,10 @@ function draw() {
       drawPath(branch.points, branch.width, clamp(state.progress * 1.2 - 0.15, 0, 1), path.phase + 1.7);
     }
   }
+  drawEdgeLightShadowFx();
+  drawBubbleBlurFx();
+  drawEmbossFx();
+  drawHalftoneNoiseFx();
   drawCrayonPaperTexture();
   drawLogoImage();
   ctx.restore();
@@ -1193,6 +1638,8 @@ function bindControls() {
     input.addEventListener("input", () => {
       const key = input.dataset.key;
       state[key] = Number(input.value);
+      if (key === "crayonStrength") state.fxWaxStrength = state.crayonStrength;
+      if (key === "fxWaxStrength") state.crayonStrength = state.fxWaxStrength;
       syncInputs();
       if (key.startsWith("textArea")) updateMarker();
       if (key.startsWith("logo")) updateLogoMarker();
@@ -1264,6 +1711,30 @@ function bindControls() {
   });
   document.getElementById("crayonToggle").addEventListener("change", (event) => {
     state.crayonEffect = event.target.checked;
+    state.fxWaxTexture = event.target.checked;
+    document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
+    draw();
+  });
+  document.getElementById("fxWaxToggle").addEventListener("change", (event) => {
+    state.fxWaxTexture = event.target.checked;
+    state.crayonEffect = state.fxWaxTexture;
+    document.getElementById("crayonToggle").checked = state.fxWaxTexture;
+    draw();
+  });
+  document.getElementById("fxEdgeToggle").addEventListener("change", (event) => {
+    state.fxEdgeLightShadow = event.target.checked;
+    draw();
+  });
+  document.getElementById("fxBubbleToggle").addEventListener("change", (event) => {
+    state.fxBubbleBlur = event.target.checked;
+    draw();
+  });
+  document.getElementById("fxEmbossToggle").addEventListener("change", (event) => {
+    state.fxEmbossDepth = event.target.checked;
+    draw();
+  });
+  document.getElementById("fxHalftoneToggle").addEventListener("change", (event) => {
+    state.fxHalftoneNoise = event.target.checked;
     draw();
   });
 
@@ -1368,7 +1839,14 @@ document.getElementById("circleScaffoldToggle").checked = state.useCircleScaffol
 document.getElementById("showGuidesToggle").checked = state.showGuides;
 document.getElementById("textSeedToggle").checked = state.useTextSeed;
 document.getElementById("textSeedInput").value = state.textSeedValue;
-document.getElementById("crayonToggle").checked = state.crayonEffect;
+state.crayonEffect = state.fxWaxTexture;
+state.crayonStrength = state.fxWaxStrength;
+document.getElementById("crayonToggle").checked = state.fxWaxTexture;
+document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
+document.getElementById("fxEdgeToggle").checked = state.fxEdgeLightShadow;
+document.getElementById("fxBubbleToggle").checked = state.fxBubbleBlur;
+document.getElementById("fxEmbossToggle").checked = state.fxEmbossDepth;
+document.getElementById("fxHalftoneToggle").checked = state.fxHalftoneNoise;
 document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
   radio.checked = radio.value === state.mirrorMode;
 });
