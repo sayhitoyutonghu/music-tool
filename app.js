@@ -38,6 +38,8 @@ const state = {
   fxEdgeStrength: 0.48,
   fxBubbleBlur: true,
   fxBubbleStrength: 0.45,
+  fxBubbleOutlinePx: 4,
+  fxBubbleGlowColor: "#8f8796",
   fxEmbossDepth: false,
   fxEmbossStrength: 0.34,
   fxHalftoneNoise: false,
@@ -219,6 +221,7 @@ function applyColorPreset(modeKey) {
   document.getElementById("outlineToggle").checked = state.outlineStroke;
   document.getElementById("outlineColorInput").value = state.outlineColor;
   document.getElementById("outlineAlphaInput").value = state.outlineAlpha;
+  document.getElementById("fxPatternColorInput").value = state.strokeColor;
   document.getElementById("bgAlphaValue").textContent = state.bgAlpha.toFixed(2);
   document.getElementById("strokeAlphaValue").textContent = state.strokeAlpha.toFixed(2);
   document.getElementById("outlineAlphaValue").textContent = state.outlineAlpha.toFixed(2);
@@ -1105,13 +1108,12 @@ function drawBubbleBlurFx() {
   const amount = clamp(state.fxBubbleStrength, 0, 1);
   if (amount < 0.01) return;
 
-  const bubble = mixRgb(state.strokeColor, "#f4e3ff", 0.62);
-  const bubbleHex = `#${bubble.r.toString(16).padStart(2, "0")}${bubble.g.toString(16).padStart(2, "0")}${bubble.b.toString(16).padStart(2, "0")}`;
   const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
   const bodyExpandPx = 22 + amount * 26;
   const mergeBlurPx = 4 + amount * 8;
-  const outlinePx = 8 + amount * 5;
+  const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
   const shellWidthScale = 1.08 + amount * 0.22;
+  const blurColor = state.fxBubbleGlowColor;
 
   const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, mergeBlurPx, scale);
   const bodyMask = thresholdMask(softUnion, 18 + amount * 14);
@@ -1121,14 +1123,28 @@ function drawBubbleBlurFx() {
   const outerGlowMask = drawExpandedPathMask(shellWidthScale, bodyExpandPx + 10 + amount * 8, 8 + amount * 16, scale);
   drawFxLayer(tintedMaskLayer(outerGlowMask, "#ffffff", 0.22 + amount * 0.42), "screen", 0.78);
 
-  const bodyFill = tintedMaskLayer(bodyMask, bubbleHex, 0.2 + amount * 0.36);
-  const bodyFillCtx = bodyFill.getContext("2d");
-  bodyFillCtx.save();
-  bodyFillCtx.globalCompositeOperation = "screen";
-  bodyFillCtx.filter = `blur(${(3 + amount * 7) * scale}px)`;
-  bodyFillCtx.drawImage(tintedMaskLayer(innerBodyMask, "#ffffff", 0.18 + amount * 0.24), 0, 0);
-  bodyFillCtx.restore();
-  drawFxLayer(bodyFill, "source-over", 0.82 + amount * 0.16);
+  const innerGlowLayer = createFxCanvas(scale);
+  const innerGlowCtx = innerGlowLayer.getContext("2d");
+  innerGlowCtx.save();
+  innerGlowCtx.scale(scale, scale);
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, blurColor, 0.24 + amount * 0.34, {
+      widthScale: 1.15 + amount * 0.26,
+      expandPx: bodyExpandPx * (0.28 + amount * 0.18),
+      blur: (5 + amount * 10) * scale,
+    }, innerGlowCtx);
+    strokePolyline(points, width, progress, "#ffffff", 0.06 + amount * 0.16, {
+      widthScale: 1.05 + amount * 0.16,
+      expandPx: bodyExpandPx * 0.18,
+      blur: (8 + amount * 12) * scale,
+    }, innerGlowCtx);
+  });
+  innerGlowCtx.restore();
+  innerGlowCtx.save();
+  innerGlowCtx.globalCompositeOperation = "destination-in";
+  innerGlowCtx.drawImage(innerBodyMask, 0, 0);
+  innerGlowCtx.restore();
+  drawFxLayer(innerGlowLayer, "source-over", 0.9);
 
   const shadowMask = drawExpandedPathMask(shellWidthScale, Math.max(2, bodyExpandPx - outlinePx * 0.8), 5 + amount * 6, scale);
   drawFxLayer(tintedMaskLayer(shadowMask, "#000000", 0.08 + amount * 0.18), "multiply", 0.7);
@@ -1796,6 +1812,16 @@ function bindControls() {
   });
   document.getElementById("strokeColorInput").addEventListener("input", (event) => {
     state.strokeColor = event.target.value;
+    document.getElementById("fxPatternColorInput").value = state.strokeColor;
+    draw();
+  });
+  document.getElementById("fxPatternColorInput").addEventListener("input", (event) => {
+    state.strokeColor = event.target.value;
+    document.getElementById("strokeColorInput").value = state.strokeColor;
+    draw();
+  });
+  document.getElementById("fxBubbleColorInput").addEventListener("input", (event) => {
+    state.fxBubbleGlowColor = event.target.value;
     draw();
   });
   document.getElementById("strokeAlphaInput").addEventListener("input", (event) => {
@@ -1845,6 +1871,8 @@ document.getElementById("crayonToggle").checked = state.fxWaxTexture;
 document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
 document.getElementById("fxEdgeToggle").checked = state.fxEdgeLightShadow;
 document.getElementById("fxBubbleToggle").checked = state.fxBubbleBlur;
+document.getElementById("fxPatternColorInput").value = state.strokeColor;
+document.getElementById("fxBubbleColorInput").value = state.fxBubbleGlowColor;
 document.getElementById("fxEmbossToggle").checked = state.fxEmbossDepth;
 document.getElementById("fxHalftoneToggle").checked = state.fxHalftoneNoise;
 document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
