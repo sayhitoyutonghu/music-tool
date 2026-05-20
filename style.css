@@ -68,19 +68,6 @@ button {
   cursor: pointer;
 }
 
-#toggleMessage {
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 30;
-  display: none;
-  padding: 6px 8px;
-  border-radius: 4px;
-  background: var(--fg-color);
-  color: var(--bg-color);
-  font-size: 11px;
-}
-
 #controls {
   z-index: 20;
   display: flex;

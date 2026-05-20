@@ -12,8 +12,6 @@
   <body class="darkmode">
     <button id="mobileToggle" class="generate-button mobile-toggle">Toggle Controls</button>
 
-    <div id="toggleMessage">Hit 'a' to show/hide controls</div>
-
     <aside id="controls" class="stacked">
       <div id="uiControls" class="top-tabs">
         <label class="selected">
@@ -64,6 +62,10 @@
               <input data-key="canvasHeight" type="range" min="300" max="4000" step="1" />
               <input data-key="canvasHeight" class="value-input" type="number" />
             </div>
+          </div>
+          <div class="field">
+            <label>Pattern Padding</label>
+            <input data-key="canvasPadding" type="range" min="0" max="24" step="0.5" value="0" />
           </div>
           <div class="bg-upload-row">
             <label class="upload-label image-upload-label">
@@ -352,6 +354,10 @@
           <div class="field">
             <label>Bubble Strength</label>
             <input data-key="fxBubbleStrength" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Bubble Blur Density</label>
+            <input data-key="fxBubbleBlurDensity" type="range" min="0" max="1" step="0.01" />
           </div>
           <div class="field">
             <label>Bubble Outline Width</label>

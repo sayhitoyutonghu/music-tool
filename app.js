@@ -4,9 +4,12 @@ const controls = document.getElementById("controls");
 const marker = document.getElementById("textAreaMarker");
 const logoMarker = document.getElementById("logoPlaceholderMarker");
 
+const DEFAULT_CANVAS_PADDING = 0;
+
 const state = {
   canvasWidth: 1400,
   canvasHeight: 1400,
+  canvasPadding: DEFAULT_CANVAS_PADDING,
   textAreaW: 38,
   textAreaH: 56,
   logoX: 50,
@@ -38,6 +41,7 @@ const state = {
   fxEdgeStrength: 0.48,
   fxBubbleBlur: true,
   fxBubbleStrength: 0.45,
+  fxBubbleBlurDensity: 0.55,
   fxBubbleOutlinePx: 4,
   fxBubbleGlowColor: "#8f8796",
   fxEmbossDepth: false,
@@ -309,6 +313,21 @@ function resizeCanvas() {
   updateLogoMarker(true);
 }
 
+function getPatternPaddingPx() {
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  return (minSide * clamp(state.canvasPadding, 0, 24)) / 100;
+}
+
+function getVisualBleedAllowancePx() {
+  const bubbleAllowance = state.fxBubbleBlur ? 46 + state.fxBubbleStrength * 28 + state.fxBubbleOutlinePx : 0;
+  return state.lineThickness * 2.2 + bubbleAllowance;
+}
+
+function getPatternSafeMarginPx() {
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  return clamp(getPatternPaddingPx() + getVisualBleedAllowancePx(), minSide * 0.035, minSide * 0.34);
+}
+
 function getTextRect(pad = 0) {
   const w = (state.canvasWidth * state.textAreaW) / 100;
   const h = (state.canvasHeight * state.textAreaH) / 100;
@@ -381,6 +400,7 @@ function createCircleGuides(options = {}) {
   if (!state.useCircleScaffold) return;
 
   const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const safeMargin = getPatternSafeMarginPx();
   const density = clamp(options.circleGuideDensity ?? state.circleGuideDensity, 0.1, 1);
   const count = Math.floor(16 + density * 58);
   const maxAttempts = count * 16;
@@ -389,9 +409,10 @@ function createCircleGuides(options = {}) {
 
   for (let i = 0; i < maxAttempts && state.guideCircles.length < count; i += 1) {
     const r = rand(minR, maxR);
-    const x = rand(r + 8, state.canvasWidth - r - 8);
+    const edge = Math.min(minSide * 0.42, safeMargin + r);
+    const x = rand(edge, state.canvasWidth - edge);
     const yBase = state.startFromBottom ? Math.pow(rand(), 2.4) : rand();
-    const y = clamp((1 - yBase * 0.96) * state.canvasHeight, r + 8, state.canvasHeight - r - 8);
+    const y = clamp((1 - yBase * 0.96) * state.canvasHeight, edge, state.canvasHeight - edge);
     if (pointInTextRect(x, y, r * 1.2) || pointInBlankZone(x, y)) continue;
 
     let collide = false;
@@ -432,15 +453,17 @@ function createSeedPoint(signX, signY, margin, gapPad) {
   }
 
   if (pointBlocked(x, y, gapPad)) {
-    x = cx + signX * rand(gapPad + 20, state.canvasWidth * 0.42);
-    y = state.startFromBottom ? rand(state.canvasHeight * 0.74, state.canvasHeight * 0.96) : cy + signY * rand(gapPad + 20, state.canvasHeight * 0.42);
+    x = clamp(cx + signX * rand(gapPad + 20, state.canvasWidth * 0.42), margin, state.canvasWidth - margin);
+    y = state.startFromBottom
+      ? rand(Math.min(state.canvasHeight - margin, state.canvasHeight * 0.74), state.canvasHeight - margin)
+      : clamp(cy + signY * rand(gapPad + 20, state.canvasHeight * 0.42), margin, state.canvasHeight - margin);
   }
   return { x: clamp(x, margin, state.canvasWidth - margin), y: clamp(y, margin, state.canvasHeight - margin) };
 }
 
 function createCurlPath(signX, signY, options = {}) {
   const minSide = Math.min(state.canvasWidth, state.canvasHeight);
-  const margin = minSide * 0.035;
+  const margin = getPatternSafeMarginPx();
   const gapPad = minSide * 0.02;
   const guideInfluence = state.useCircleScaffold ? clamp(options.circleGuideInfluence ?? state.circleGuideInfluence, 0, 1) : 0;
   const points = [];
@@ -1093,7 +1116,7 @@ function drawEdgeLightShadowFx() {
   ctx.save();
   ctx.globalCompositeOperation = "multiply";
   forEachPathSegment((points, width, progress) => {
-    strokePolyline(points, width, progress, "#000000", 0.08 + amount * 0.32, {
+    strokePolyline(points, width, progress, "#000000", (0.08 + amount * 0.32) * state.strokeAlpha, {
       widthScale: 1.62 + amount * 0.56,
       blur: blur * 0.92,
       offsetX: lightOffset,
@@ -1108,12 +1131,14 @@ function drawBubbleBlurFx() {
   const amount = clamp(state.fxBubbleStrength, 0, 1);
   if (amount < 0.01) return;
 
+  const density = clamp(state.fxBubbleBlurDensity, 0, 1);
   const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
   const bodyExpandPx = 22 + amount * 26;
   const mergeBlurPx = 4 + amount * 8;
   const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
   const shellWidthScale = 1.08 + amount * 0.22;
   const blurColor = state.fxBubbleGlowColor;
+  const patternBlurVisibility = density * clamp(state.strokeAlpha, 0, 1);
 
   const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, mergeBlurPx, scale);
   const bodyMask = thresholdMask(softUnion, 18 + amount * 14);
@@ -1121,33 +1146,52 @@ function drawBubbleBlurFx() {
   const hardOuterEdgeMask = subtractMask(bodyMask, innerBodyMask);
 
   const outerGlowMask = drawExpandedPathMask(shellWidthScale, bodyExpandPx + 10 + amount * 8, 8 + amount * 16, scale);
-  drawFxLayer(tintedMaskLayer(outerGlowMask, "#ffffff", 0.22 + amount * 0.42), "screen", 0.78);
+  const outsideGlowMask = subtractMask(outerGlowMask, bodyMask);
+  drawFxLayer(tintedMaskLayer(outsideGlowMask, "#ffffff", 0.22 + amount * 0.42), "screen", 0.78);
 
   const innerGlowLayer = createFxCanvas(scale);
   const innerGlowCtx = innerGlowLayer.getContext("2d");
-  innerGlowCtx.save();
-  innerGlowCtx.scale(scale, scale);
-  forEachPathSegment((points, width, progress) => {
-    strokePolyline(points, width, progress, blurColor, 0.24 + amount * 0.34, {
-      widthScale: 1.15 + amount * 0.26,
-      expandPx: bodyExpandPx * (0.28 + amount * 0.18),
-      blur: (5 + amount * 10) * scale,
-    }, innerGlowCtx);
-    strokePolyline(points, width, progress, "#ffffff", 0.06 + amount * 0.16, {
-      widthScale: 1.05 + amount * 0.16,
-      expandPx: bodyExpandPx * 0.18,
-      blur: (8 + amount * 12) * scale,
-    }, innerGlowCtx);
-  });
-  innerGlowCtx.restore();
-  innerGlowCtx.save();
-  innerGlowCtx.globalCompositeOperation = "destination-in";
-  innerGlowCtx.drawImage(innerBodyMask, 0, 0);
-  innerGlowCtx.restore();
-  drawFxLayer(innerGlowLayer, "source-over", 0.9);
+  if (patternBlurVisibility > 0.001) {
+    innerGlowCtx.save();
+    innerGlowCtx.scale(scale, scale);
+    forEachPathSegment((points, width, progress) => {
+      strokePolyline(points, width, progress, blurColor, patternBlurVisibility * (0.35 + amount * 0.36), {
+        widthScale: 1.06 + amount * 0.2,
+        expandPx: bodyExpandPx * (0.1 + density * 0.3 + amount * 0.08),
+        blur: (8 + amount * 12 + density * 10) * scale,
+      }, innerGlowCtx);
+      strokePolyline(points, width, progress, blurColor, patternBlurVisibility * (0.28 + amount * 0.28), {
+        widthScale: 1 + amount * 0.1,
+        expandPx: bodyExpandPx * (0.03 + density * 0.12),
+        blur: (2.5 + amount * 4.5 + density * 5) * scale,
+      }, innerGlowCtx);
+      strokePolyline(points, width, progress, "#ffffff", patternBlurVisibility * (0.08 + amount * 0.12), {
+        widthScale: 1.05 + amount * 0.16,
+        expandPx: bodyExpandPx * (0.04 + density * 0.12),
+        blur: (7 + amount * 9 + density * 8) * scale,
+      }, innerGlowCtx);
+    });
+    innerGlowCtx.restore();
+    innerGlowCtx.save();
+    innerGlowCtx.globalCompositeOperation = "destination-in";
+    innerGlowCtx.drawImage(innerBodyMask, 0, 0);
+    innerGlowCtx.restore();
+    drawFxLayer(innerGlowLayer, "source-over", 0.42 + density * 0.58);
 
-  const shadowMask = drawExpandedPathMask(shellWidthScale, Math.max(2, bodyExpandPx - outlinePx * 0.8), 5 + amount * 6, scale);
-  drawFxLayer(tintedMaskLayer(shadowMask, "#000000", 0.08 + amount * 0.18), "multiply", 0.7);
+    const shadowMask = drawExpandedPathMask(shellWidthScale, Math.max(2, bodyExpandPx - outlinePx * 0.8), 5 + amount * 6, scale);
+    drawFxLayer(tintedMaskLayer(shadowMask, "#000000", patternBlurVisibility * (0.04 + amount * 0.1)), "multiply", 0.45 + density * 0.22);
+  }
+
+  const inwardOutlineLayer = tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.12 + amount * 0.12);
+  const inwardOutlineCtx = inwardOutlineLayer.getContext("2d");
+  inwardOutlineCtx.save();
+  inwardOutlineCtx.globalCompositeOperation = "source-over";
+  inwardOutlineCtx.filter = `blur(${((1.8 + amount * 3.3) * scale).toFixed(2)}px)`;
+  inwardOutlineCtx.drawImage(tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.18 + amount * 0.18), 0, 0);
+  inwardOutlineCtx.globalCompositeOperation = "destination-in";
+  inwardOutlineCtx.drawImage(innerBodyMask, 0, 0);
+  inwardOutlineCtx.restore();
+  drawFxLayer(inwardOutlineLayer, "screen", 0.5 + amount * 0.18);
 
   const hardEdgeLayer = tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.92);
   const hardEdgeCtx = hardEdgeLayer.getContext("2d");
@@ -1402,20 +1446,6 @@ function setControlPosition(value) {
   });
 }
 
-function showToggleMessage() {
-  const message = document.getElementById("toggleMessage");
-  message.style.display = "block";
-  message.style.opacity = "1";
-  setTimeout(() => {
-    message.style.transition = "opacity 0.5s";
-    message.style.opacity = "0";
-    setTimeout(() => {
-      message.style.display = "none";
-      message.style.transition = "";
-    }, 500);
-  }, 2200);
-}
-
 function tryAnchorDownload(url, fileName) {
   const link = document.createElement("a");
   link.download = fileName;
@@ -1632,6 +1662,7 @@ function bindControls() {
   const rebuildKeys = new Set([
     "canvasWidth",
     "canvasHeight",
+    "canvasPadding",
     "textAreaW",
     "textAreaH",
     "density",
@@ -1841,16 +1872,6 @@ function bindControls() {
     state.outlineAlpha = Number(event.target.value);
     document.getElementById("outlineAlphaValue").textContent = state.outlineAlpha.toFixed(2);
     draw();
-  });
-
-  window.addEventListener("keydown", (event) => {
-    if (event.key.toLowerCase() !== "a") return;
-    if (controls.classList.contains("hideControls")) {
-      setControlPosition("stacked");
-    } else {
-      setControlPosition("hideControls");
-      showToggleMessage();
-    }
   });
 
   window.addEventListener("resize", () => {
