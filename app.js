@@ -42,7 +42,7 @@ const state = {
   fxBubbleBlur: true,
   fxBubbleStrength: 0.45,
   fxBubbleBlurDensity: 0.55,
-  fxBubbleOutlinePx: 4,
+  fxBubbleOutlinePx: 1,
   fxBubbleGlowColor: "#8f8796",
   fxEmbossDepth: false,
   fxEmbossStrength: 0.34,
@@ -206,6 +206,10 @@ function mixRgb(colorA, colorB, amount) {
     g: Math.round(a.g * (1 - t) + b.g * t),
     b: Math.round(a.b * (1 - t) + b.b * t),
   };
+}
+
+function rgbToRgba(color, alpha = 1) {
+  return `rgba(${color.r}, ${color.g}, ${color.b}, ${clamp(alpha, 0, 1)})`;
 }
 
 function applyColorPreset(modeKey) {
@@ -744,6 +748,71 @@ function segmentWidth(baseWidth, t, phase) {
   return Math.max(0.35, baseWidth * variationScale * taperScale);
 }
 
+function drawCrayonMicroDetails(p0, p1, index, currentWidth, phase, color, alpha, rough, baseJitterX, baseJitterY) {
+  const vx = p1.x - p0.x;
+  const vy = p1.y - p0.y;
+  const segmentLength = Math.hypot(vx, vy) || 1;
+  const tx = vx / segmentLength;
+  const ty = vy / segmentLength;
+  const nx = -ty;
+  const ny = tx;
+  const sampleCount = Math.min(9, Math.max(2, Math.ceil(segmentLength / Math.max(2.2, currentWidth * 0.32))));
+  const dark = mixRgb(color, "#000000", 0.72);
+  const light = mixRgb(color, "#ffffff", 0.78);
+  const mid = mixRgb(color, "#ffffff", 0.22);
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let sample = 0; sample < sampleCount; sample += 1) {
+    const seed = index * 31.91 + sample * 17.37 + phase * 4.73;
+    const along = (sample + 0.2 + stableNoise(seed + 0.11) * 0.64) / sampleCount;
+    const cross = (stableNoise(seed + 1.41) - 0.5) * currentWidth * (0.9 + rough * 0.7);
+    const px = p0.x + vx * along + nx * cross + baseJitterX;
+    const py = p0.y + vy * along + ny * cross + baseJitterY;
+    const length = currentWidth * (0.1 + stableNoise(seed + 2.03) * (0.34 + rough * 0.34));
+    const axis = stableNoise(seed + 3.29);
+    const shade = stableNoise(seed + 4.87);
+    const useDark = shade < 0.48;
+    const useLight = shade > 0.74;
+    const tone = useDark ? dark : useLight ? light : mid;
+    const toneAlpha = alpha * (useDark ? 0.08 + rough * 0.22 : 0.045 + rough * 0.16);
+    const lineWidth = Math.max(0.28, currentWidth * (0.025 + stableNoise(seed + 5.61) * (0.05 + rough * 0.035)));
+    const dx = axis < 0.58 ? tx * length : nx * length * 0.62;
+    const dy = axis < 0.58 ? ty * length : ny * length * 0.62;
+
+    ctx.globalCompositeOperation = useDark ? "multiply" : "screen";
+    ctx.strokeStyle = rgbToRgba(tone, toneAlpha);
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(px - dx, py - dy);
+    ctx.lineTo(px + dx, py + dy);
+    ctx.stroke();
+
+    if (stableNoise(seed + 6.72) < 0.72 + rough * 0.2) {
+      const dotSize = Math.max(0.65, currentWidth * (0.055 + stableNoise(seed + 7.1) * 0.095));
+      ctx.fillStyle = rgbToRgba(useDark ? dark : light, alpha * (0.05 + rough * 0.18));
+      ctx.fillRect(px - dotSize * 0.5, py - dotSize * 0.5, dotSize * (0.55 + stableNoise(seed + 8.19)), dotSize * (0.45 + stableNoise(seed + 9.61)));
+    }
+
+    if (stableNoise(seed + 10.33) < 0.42 + rough * 0.26) {
+      const edgeSign = stableNoise(seed + 11.07) > 0.5 ? 1 : -1;
+      const edgeX = p0.x + vx * along + nx * edgeSign * currentWidth * (0.46 + rough * 0.2) + baseJitterX;
+      const edgeY = p0.y + vy * along + ny * edgeSign * currentWidth * (0.46 + rough * 0.2) + baseJitterY;
+      const edgeLength = currentWidth * (0.16 + rough * 0.25);
+      ctx.globalCompositeOperation = stableNoise(seed + 12.55) > 0.48 ? "screen" : "multiply";
+      ctx.strokeStyle = stableNoise(seed + 13.3) > 0.48
+        ? rgbToRgba(light, alpha * (0.08 + rough * 0.18))
+        : rgbToRgba(dark, alpha * (0.08 + rough * 0.2));
+      ctx.lineWidth = Math.max(0.35, currentWidth * (0.035 + rough * 0.035));
+      ctx.beginPath();
+      ctx.moveTo(edgeX - tx * edgeLength, edgeY - ty * edgeLength);
+      ctx.lineTo(edgeX + tx * edgeLength, edgeY + ty * edgeLength);
+      ctx.stroke();
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
 function strokePathSegments(points, width, drawCount, phase, color, alpha) {
   if (drawCount < 2) return;
   const animatedNoise = state.animate ? state.audioLevel * 2.2 : 0;
@@ -842,6 +911,8 @@ function strokePathSegments(points, width, drawCount, phase, color, alpha) {
       ctx.lineTo(p1.x + ox, p1.y + oy);
       ctx.stroke();
     }
+
+    drawCrayonMicroDetails(p0, p1, i, currentWidth, phase, color, alpha, rough, baseJitterX, baseJitterY);
 
     if (edgeStrength > 0.01) {
       const edgeOffset = currentWidth * (0.16 + rough * 0.14 + edgeStrength * 0.13);
@@ -1315,37 +1386,56 @@ function drawCrayonPaperTexture() {
   if (!state.fxWaxTexture) return;
   const rough = clamp(state.fxWaxStrength, 0, 1);
   if (rough < 0.02) return;
+  const strokeVisibility = clamp(state.strokeAlpha, 0, 1);
+  if (strokeVisibility < 0.001) return;
 
   const w = canvas.width;
   const h = canvas.height;
-  const grainCount = Math.floor((w * h) / 2400 * (0.28 + rough * 1.45));
-  const sizeMin = 0.6;
-  const sizeMax = 1.8 + rough * 1.7;
+  const textureCanvas = createFxCanvas();
+  const tctx = textureCanvas.getContext("2d");
+  const grainCount = Math.floor((w * h) / 1450 * (0.42 + rough * 2.15));
+  const sizeMin = 0.45;
+  const sizeMax = 1.35 + rough * 2.4;
+  const dark = mixRgb(state.strokeColor, "#000000", 0.78);
+  const light = mixRgb(state.strokeColor, "#ffffff", 0.86);
+  const mid = mixRgb(state.strokeColor, "#ffffff", 0.35);
 
-  ctx.save();
-  ctx.globalCompositeOperation = "multiply";
+  tctx.clearRect(0, 0, w, h);
+  tctx.globalCompositeOperation = "source-over";
   for (let i = 0; i < grainCount; i += 1) {
     const x = stableNoise(i * 12.989 + 17.3) * w;
     const y = stableNoise(i * 78.233 + 91.7) * h;
     const tone = stableNoise(i * 35.173 + 6.4);
-    if (tone < 0.42) continue;
     const size = sizeMin + stableNoise(i * 9.17 + 2.1) * (sizeMax - sizeMin);
-    const alpha = (0.018 + rough * 0.06) * (0.55 + tone * 0.75);
-    ctx.fillStyle = `rgba(0,0,0,${alpha.toFixed(3)})`;
-    ctx.fillRect(x, y, size, size * (0.75 + stableNoise(i * 5.91) * 0.7));
+    const alpha = strokeVisibility * (0.022 + rough * 0.12) * (0.45 + tone * 0.85);
+    const color = tone < 0.44 ? dark : tone > 0.78 ? light : mid;
+    tctx.fillStyle = rgbToRgba(color, alpha);
+    tctx.fillRect(x, y, size * (0.6 + stableNoise(i * 5.91) * 1.4), size * (0.45 + stableNoise(i * 4.31) * 1.8));
   }
 
-  ctx.globalCompositeOperation = "screen";
-  for (let i = 0; i < grainCount * 0.72; i += 1) {
-    const x = stableNoise(i * 51.731 + 33.2) * w;
-    const y = stableNoise(i * 19.117 + 44.8) * h;
-    const tone = stableNoise(i * 7.717 + 12.6);
-    if (tone < 0.58) continue;
-    const size = sizeMin + stableNoise(i * 4.63 + 8.5) * (sizeMax - sizeMin);
-    const alpha = (0.014 + rough * 0.05) * (0.5 + tone * 0.7);
-    ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
-    ctx.fillRect(x, y, size, size * (0.7 + stableNoise(i * 6.21) * 0.8));
+  const weaveStep = Math.max(3, Math.round(9 - rough * 4.5));
+  const weaveAlpha = strokeVisibility * (0.014 + rough * 0.07);
+  for (let y = 0; y < h; y += weaveStep) {
+    const wave = stableNoise(y * 0.113 + state.seed * 0.0003);
+    tctx.fillStyle = rgbToRgba(wave > 0.5 ? light : dark, weaveAlpha * (0.35 + wave * 0.9));
+    tctx.fillRect(0, y + wave * 1.2, w, Math.max(0.45, rough * 1.05));
   }
+  for (let x = 0; x < w; x += weaveStep + 1) {
+    const wave = stableNoise(x * 0.097 + state.seed * 0.0004);
+    tctx.fillStyle = rgbToRgba(wave > 0.55 ? light : dark, weaveAlpha * (0.28 + wave * 0.72));
+    tctx.fillRect(x + wave * 1.1, 0, Math.max(0.35, rough * 0.8), h);
+  }
+
+  const maskCanvas = createFxCanvas();
+  const mctx = maskCanvas.getContext("2d");
+  drawPathMask(mctx, 1.48 + rough * 0.38, 0.8 + rough * 2.6);
+  tctx.globalCompositeOperation = "destination-in";
+  tctx.drawImage(maskCanvas, 0, 0);
+
+  ctx.save();
+  ctx.globalAlpha = 0.72 + rough * 0.24;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(textureCanvas, 0, 0);
   ctx.restore();
 }
 
