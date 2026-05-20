@@ -40,7 +40,7 @@ const state = {
   fxEdgeLightShadow: true,
   fxEdgeStrength: 0.48,
   fxBubbleBlur: true,
-  fxBubbleStrength: 0.45,
+  fxBubbleStrength: 0.04,
   fxBubbleBlurDensity: 0.55,
   fxBubbleOutlinePx: 1,
   fxBubbleGlowColor: "#8f8796",
@@ -84,10 +84,8 @@ let halftoneNoiseCache = { key: "", canvas: null };
 
 const colorModes = {
   black: { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 1, outline: false },
-  "faint black": { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 0.35, outline: false },
   "black outlines": { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 1, outline: true },
   white: { bg: "#050505", bgAlpha: 1, stroke: "#ffffff", strokeAlpha: 1, outline: false },
-  "faint white": { bg: "#050505", bgAlpha: 1, stroke: "#ffffff", strokeAlpha: 0.35, outline: false },
   "white outlines": { bg: "#050505", bgAlpha: 1, stroke: "#ffffff", strokeAlpha: 1, outline: true },
 };
 
