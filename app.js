@@ -1543,8 +1543,9 @@ function drawAudioTravellers() {
   const scale = clamp(880 / Math.max(canvas.width, canvas.height), 0.46, 1);
   const blobMask = createFxCanvas(scale);
   const bctx = blobMask.getContext("2d");
-  const liquidColor = state.strokeAlpha > 0.04 ? state.strokeColor : state.fxBubbleGlowColor || state.outlineColor || "#ff7bc4";
-  const glowColor = state.fxBubbleGlowColor || mixRgb(liquidColor, "#ffffff", 0.42);
+  const audioColor = state.fxBubbleGlowColor || "#ff7bc4";
+  const audioGlowColor = mixRgb(audioColor, "#ffffff", 0.36);
+  const audioRimColor = mixRgb(audioColor, "#ffffff", 0.58);
   const impact = clamp(motion.beat * 0.75 + motion.transient * 0.95 + motion.bass * 0.45, 0, 1);
   const blobCount = Math.min(64, Math.max(16, Math.floor(16 + motion.energy * 22 + impact * 24)));
   const trailSteps = 6 + Math.floor(motion.mid * 4 + impact * 3);
@@ -1619,10 +1620,10 @@ function drawAudioTravellers() {
   glowCtx.globalCompositeOperation = "destination-in";
   glowCtx.drawImage(pathClip, 0, 0);
 
-  const liquidLayer = tintedMaskLayer(liquidMask, liquidColor, 0.62 + impact * 0.28);
-  const glowLayer = tintedMaskLayer(glowMask, glowColor, 0.18 + motion.energy * 0.28 + impact * 0.18);
+  const liquidLayer = tintedMaskLayer(liquidMask, audioColor, 0.62 + impact * 0.28);
+  const glowLayer = tintedMaskLayer(glowMask, audioGlowColor, 0.18 + motion.energy * 0.28 + impact * 0.18);
   const rimMask = subtractMask(liquidMask, erodeMask(liquidMask, 1 + impact * 1.8));
-  const rimLayer = tintedMaskLayer(rimMask, mixRgb(liquidColor, "#ffffff", 0.62), 0.58 + motion.treble * 0.18 + impact * 0.14);
+  const rimLayer = tintedMaskLayer(rimMask, audioRimColor, 0.58 + motion.treble * 0.18 + impact * 0.14);
 
   drawFxLayer(glowLayer, "screen", 0.82);
   drawFxLayer(liquidLayer, "source-over", 0.7 + motion.energy * 0.22);
