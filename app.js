@@ -80,7 +80,9 @@ const state = {
 let audioContext;
 let analyser;
 let audioSource;
+let audioSourceElement;
 let audioElement;
+let audioObjectUrl;
 let oscillator;
 let gainNode;
 let demoPlaying = false;
@@ -237,6 +239,10 @@ function mixRgb(colorA, colorB, amount) {
 
 function rgbToRgba(color, alpha = 1) {
   return `rgba(${color.r}, ${color.g}, ${color.b}, ${clamp(alpha, 0, 1)})`;
+}
+
+function colorToRgba(color, alpha = 1) {
+  return typeof color === "string" ? hexToRgba(color, alpha) : rgbToRgba(color, alpha);
 }
 
 function applyColorPreset(modeKey) {
@@ -1106,6 +1112,36 @@ function thresholdMask(sourceCanvas, alphaCutoff = 24) {
   return maskCanvas;
 }
 
+function thresholdMaskWithTexture(sourceCanvas, alphaCutoff = 24, roughness = 0, phase = 0) {
+  const sourceCtx = sourceCanvas.getContext("2d");
+  const image = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const data = image.data;
+  const width = sourceCanvas.width;
+  const grain = clamp(roughness, 0, 1);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const p = i / 4;
+    const x = p % width;
+    const y = Math.floor(p / width);
+    const cloudy = stableNoise(x * 0.131 + y * 0.071 + phase * 19.7);
+    const scratch = stableNoise(x * 0.53 + y * 1.77 + phase * 31.1);
+    const cutoff = alphaCutoff + (cloudy - 0.5) * 72 * grain;
+    const keep = data[i + 3] >= cutoff && scratch > 0.04 + grain * 0.11;
+    const brokenEdge = data[i + 3] > alphaCutoff * 0.5 && cloudy > 0.82 - grain * 0.22;
+    const alpha = keep || brokenEdge ? clamp(data[i + 3] * (0.62 + cloudy * 0.55), 0, 255) : 0;
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+    data[i + 3] = alpha;
+  }
+
+  const maskCanvas = createFxCanvas();
+  maskCanvas.width = sourceCanvas.width;
+  maskCanvas.height = sourceCanvas.height;
+  maskCanvas.getContext("2d").putImageData(image, 0, 0);
+  return maskCanvas;
+}
+
 function erodeMask(sourceCanvas, iterations) {
   const width = sourceCanvas.width;
   const height = sourceCanvas.height;
@@ -1174,7 +1210,7 @@ function tintedMaskLayer(maskCanvas, color, alpha) {
   const layerCtx = layer.getContext("2d");
   layerCtx.drawImage(maskCanvas, 0, 0);
   layerCtx.globalCompositeOperation = "source-in";
-  layerCtx.fillStyle = hexToRgba(color, alpha);
+  layerCtx.fillStyle = colorToRgba(color, alpha);
   layerCtx.fillRect(0, 0, layer.width, layer.height);
   return layer;
 }
@@ -1502,77 +1538,92 @@ function drawAudioTravellers() {
   });
   if (!segments.length) return;
 
-  const layer = createFxCanvas();
-  const lctx = layer.getContext("2d");
-  const travellerColor = state.fxBubbleGlowColor || state.strokeColor;
-  const coreColor = mixRgb(travellerColor, "#ffffff", 0.28 + motion.treble * 0.22);
-  const shadowColor = mixRgb(travellerColor, "#000000", 0.45);
-  const travellerCount = Math.min(18, Math.max(4, Math.floor(4 + motion.energy * 8 + motion.beat * 5)));
+  const scale = clamp(880 / Math.max(canvas.width, canvas.height), 0.46, 1);
+  const blobMask = createFxCanvas(scale);
+  const bctx = blobMask.getContext("2d");
+  const liquidColor = state.strokeAlpha > 0.04 ? state.strokeColor : state.fxBubbleGlowColor || state.outlineColor || "#ff7bc4";
+  const glowColor = state.fxBubbleGlowColor || mixRgb(liquidColor, "#ffffff", 0.42);
+  const blobCount = Math.min(48, Math.max(12, Math.floor(12 + motion.energy * 18 + motion.beat * 12)));
+  const trailSteps = 5 + Math.floor(motion.mid * 4);
 
-  lctx.clearRect(0, 0, layer.width, layer.height);
-  lctx.lineCap = "round";
-  lctx.lineJoin = "round";
-  for (let i = 0; i < travellerCount; i += 1) {
+  bctx.save();
+  bctx.scale(scale, scale);
+  bctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < blobCount; i += 1) {
     const pick = Math.floor(stableNoise(i * 41.3 + state.seed * 0.00017) * segments.length) % segments.length;
     const segment = segments[pick];
     const offset = stableNoise(i * 17.71 + segment.phase * 3.1);
     const direction = stableNoise(i * 9.91 + state.seed * 0.00023) > 0.5 ? 1 : -1;
-    const travelSpeed = 0.035 + state.speed * 1.65 + motion.bass * 0.12 + stableNoise(i * 5.37) * 0.035;
-    const travel = offset + direction * motion.phase * travelSpeed + motion.beat * (0.025 + i * 0.001);
+    const travelSpeed = 0.045 + motion.bass * 0.16 + motion.mid * 0.055 + stableNoise(i * 5.37) * 0.04;
+    const travel = offset + direction * motion.phase * travelSpeed + motion.beat * (0.018 + i * 0.0009);
     const point = pointOnPath(segment.points, travel, segment.progress);
     if (!point) continue;
 
-    const pulse = 0.75 + motion.bass * 1.8 + motion.beat * 2.4 + stableNoise(i * 3.19 + motion.phase) * 0.45;
-    const radius = Math.max(3, segment.width * (0.62 + pulse * 0.45));
-    const glowRadius = radius * (2.2 + motion.energy * 1.3 + motion.beat * 1.1);
+    const pulse = 0.72 + motion.bass * 1.65 + motion.beat * 2.2 + stableNoise(i * 3.19 + motion.phase * 7.1) * 0.48;
+    const radius = Math.max(3.5, segment.width * (0.9 + pulse * 0.55));
+    const angle = point.angle + Math.sin(motion.phase * 4 + i) * 0.24;
+    const stretch = 1 + motion.bass * 0.45 + stableNoise(i * 2.47) * 0.42;
 
-    lctx.globalCompositeOperation = "screen";
-    const glow = lctx.createRadialGradient(point.x, point.y, radius * 0.12, point.x, point.y, glowRadius);
-    glow.addColorStop(0, hexToRgba(travellerColor, 0.46 + motion.beat * 0.22));
-    glow.addColorStop(0.42, hexToRgba(travellerColor, 0.2 + motion.energy * 0.22));
-    glow.addColorStop(1, hexToRgba(travellerColor, 0));
-    lctx.fillStyle = glow;
-    lctx.beginPath();
-    lctx.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
-    lctx.fill();
+    bctx.fillStyle = `rgba(255, 255, 255, ${0.48 + motion.beat * 0.24})`;
+    bctx.beginPath();
+    bctx.ellipse(point.x, point.y, radius * stretch, radius * (0.72 + motion.treble * 0.18), angle, 0, Math.PI * 2);
+    bctx.fill();
 
-    for (let trail = 1; trail <= 5; trail += 1) {
-      const trailPoint = pointOnPath(segment.points, travel - direction * trail * (0.014 + motion.mid * 0.006), segment.progress);
+    for (let trail = 1; trail <= trailSteps; trail += 1) {
+      const trailPoint = pointOnPath(segment.points, travel - direction * trail * (0.012 + motion.mid * 0.007), segment.progress);
       if (!trailPoint) continue;
-      const alpha = (0.18 + motion.energy * 0.24) * (1 - trail / 6);
-      lctx.strokeStyle = hexToRgba(travellerColor, alpha);
-      lctx.lineWidth = Math.max(1.1, radius * (0.32 - trail * 0.03));
-      lctx.beginPath();
-      lctx.moveTo(point.x, point.y);
-      lctx.lineTo(trailPoint.x, trailPoint.y);
-      lctx.stroke();
+      const falloff = 1 - trail / (trailSteps + 1);
+      const trailRadius = Math.max(2.2, radius * (0.34 + falloff * 0.42));
+      bctx.fillStyle = `rgba(255, 255, 255, ${0.18 + falloff * (0.34 + motion.energy * 0.2)})`;
+      bctx.beginPath();
+      bctx.ellipse(trailPoint.x, trailPoint.y, trailRadius * (1 + motion.bass * 0.28), trailRadius * 0.7, trailPoint.angle, 0, Math.PI * 2);
+      bctx.fill();
     }
 
-    const wobble = Math.sin(motion.phase * 2.4 + i) * radius * 0.18;
-    lctx.globalCompositeOperation = "source-over";
-    lctx.fillStyle = rgbToRgba(coreColor, 0.42 + motion.beat * 0.22);
-    lctx.beginPath();
-    lctx.ellipse(point.x, point.y, radius * (0.7 + motion.bass * 0.28), radius * (0.52 + motion.treble * 0.24), point.angle + wobble * 0.02, 0, Math.PI * 2);
-    lctx.fill();
-
-    lctx.strokeStyle = rgbToRgba(shadowColor, 0.22 + motion.energy * 0.22);
-    lctx.lineWidth = Math.max(0.7, radius * 0.14);
-    lctx.beginPath();
-    lctx.arc(point.x + Math.cos(point.angle + Math.PI * 0.7) * radius * 0.16, point.y + Math.sin(point.angle + Math.PI * 0.7) * radius * 0.16, radius * 0.64, 0, Math.PI * 2);
-    lctx.stroke();
+    const satellites = 1 + Math.floor(stableNoise(i * 6.13 + motion.phase) * 3);
+    for (let j = 0; j < satellites; j += 1) {
+      const theta = point.angle + Math.PI / 2 + (j - 1) * 0.88 + Math.sin(motion.phase * 3.6 + i + j) * 0.36;
+      const dist = radius * (0.8 + stableNoise(i * 8.1 + j) * 1.2);
+      const satRadius = Math.max(1.7, radius * (0.18 + stableNoise(i * 11.9 + j) * 0.24) * (1 + motion.beat * 0.8));
+      bctx.fillStyle = `rgba(255, 255, 255, ${0.2 + motion.treble * 0.3})`;
+      bctx.beginPath();
+      bctx.arc(point.x + Math.cos(theta) * dist, point.y + Math.sin(theta) * dist, satRadius, 0, Math.PI * 2);
+      bctx.fill();
+    }
   }
+  bctx.restore();
 
-  const maskCanvas = createFxCanvas();
-  const mctx = maskCanvas.getContext("2d");
-  drawPathMask(mctx, 2.15 + motion.bass * 0.55, 1.5 + motion.beat * 5);
-  lctx.globalCompositeOperation = "destination-in";
-  lctx.drawImage(maskCanvas, 0, 0);
+  const blurredMask = createFxCanvas(scale);
+  const blurredCtx = blurredMask.getContext("2d");
+  blurredCtx.filter = `blur(${((7 + motion.bass * 12 + motion.beat * 6) * scale).toFixed(2)}px)`;
+  blurredCtx.drawImage(blobMask, 0, 0);
 
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.68 + motion.energy * 0.24;
-  ctx.drawImage(layer, 0, 0);
-  ctx.restore();
+  const liquidMask = thresholdMaskWithTexture(
+    blurredMask,
+    22 + motion.treble * 20 - motion.beat * 4,
+    0.28 + motion.treble * 0.34 + motion.beat * 0.18,
+    motion.phase
+  );
+  const pathClip = drawExpandedPathMask(1.6 + motion.bass * 0.35, 5 + motion.energy * 8 + motion.beat * 5, 2 + motion.mid * 3, scale);
+  const maskCtx = liquidMask.getContext("2d");
+  maskCtx.globalCompositeOperation = "destination-in";
+  maskCtx.drawImage(pathClip, 0, 0);
+
+  const glowMask = createFxCanvas(scale);
+  const glowCtx = glowMask.getContext("2d");
+  glowCtx.filter = `blur(${((5 + motion.energy * 10 + motion.beat * 4) * scale).toFixed(2)}px)`;
+  glowCtx.drawImage(liquidMask, 0, 0);
+  glowCtx.globalCompositeOperation = "destination-in";
+  glowCtx.drawImage(pathClip, 0, 0);
+
+  const liquidLayer = tintedMaskLayer(liquidMask, liquidColor, 0.58 + motion.beat * 0.24);
+  const glowLayer = tintedMaskLayer(glowMask, glowColor, 0.16 + motion.energy * 0.26);
+  const rimMask = subtractMask(liquidMask, erodeMask(liquidMask, 1 + motion.beat * 1.2));
+  const rimLayer = tintedMaskLayer(rimMask, mixRgb(liquidColor, "#ffffff", 0.55), 0.52 + motion.treble * 0.18);
+
+  drawFxLayer(glowLayer, "screen", 0.78);
+  drawFxLayer(liquidLayer, "source-over", 0.62 + motion.energy * 0.2);
+  drawFxLayer(rimLayer, "screen", 0.9);
 }
 
 function draw() {
@@ -1741,7 +1792,7 @@ function downloadPng() {
 
 async function ensureAudioContext() {
   if (!audioContext) {
-    audioContext = new AudioContext();
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = 0.82;
@@ -1751,10 +1802,19 @@ async function ensureAudioContext() {
 }
 
 function connectAudioElement(element) {
-  if (!audioContext || !analyser) return;
+  if (!audioContext || !analyser || !element) return false;
+  if (audioSource && audioSourceElement === element) return true;
   if (audioSource) audioSource.disconnect();
-  audioSource = audioContext.createMediaElementSource(element);
-  audioSource.connect(analyser);
+  try {
+    audioSource = audioContext.createMediaElementSource(element);
+    audioSource.connect(analyser);
+    audioSourceElement = element;
+    return true;
+  } catch (error) {
+    console.error("Audio analyser connection failed", error);
+    document.getElementById("audioLevel").textContent = "ERR";
+    return false;
+  }
 }
 
 function updateAudioLevel() {
@@ -1813,6 +1873,11 @@ async function toggleDemoAudio() {
     return;
   }
 
+  if (audioElement && !audioElement.paused) {
+    audioElement.pause();
+    document.getElementById("playUploaded").classList.remove("playing");
+  }
+
   oscillator = audioContext.createOscillator();
   gainNode = audioContext.createGain();
   oscillator.type = "sawtooth";
@@ -1832,14 +1897,28 @@ async function handleAudioUpload(event) {
   await ensureAudioContext();
   if (audioElement) {
     audioElement.pause();
-    URL.revokeObjectURL(audioElement.src);
   }
-  audioElement = new Audio(URL.createObjectURL(file));
-  audioElement.crossOrigin = "anonymous";
+  if (audioObjectUrl) {
+    URL.revokeObjectURL(audioObjectUrl);
+  }
+  audioObjectUrl = URL.createObjectURL(file);
+  audioElement = new Audio();
+  audioElement.preload = "auto";
+  audioElement.loop = true;
+  audioElement.src = audioObjectUrl;
+  audioElement.addEventListener("ended", () => {
+    document.getElementById("playUploaded").classList.remove("playing");
+  });
+  audioElement.addEventListener("error", () => {
+    document.getElementById("audioLevel").textContent = "ERR";
+    console.error("Audio file could not be decoded", audioElement.error);
+  });
   connectAudioElement(audioElement);
   const button = document.getElementById("playUploaded");
   button.disabled = false;
+  button.classList.remove("playing");
   button.textContent = file.name.length > 18 ? `${file.name.slice(0, 18)}...` : file.name;
+  document.getElementById("audioLevel").textContent = "0.00";
 }
 
 async function toggleUploadedAudio() {
@@ -1847,8 +1926,27 @@ async function toggleUploadedAudio() {
   await ensureAudioContext();
   const button = document.getElementById("playUploaded");
   if (audioElement.paused) {
-    audioElement.play();
-    button.classList.add("playing");
+    if (!connectAudioElement(audioElement)) return;
+    if (demoPlaying) {
+      oscillator?.stop();
+      oscillator = null;
+      gainNode?.disconnect();
+      gainNode = null;
+      demoPlaying = false;
+      const demoButton = document.getElementById("demoAudio");
+      demoButton.classList.remove("playing");
+      demoButton.textContent = "Demon Box Audio";
+    }
+    try {
+      await audioElement.play();
+      button.classList.add("playing");
+      updateAudioLevel();
+      draw();
+    } catch (error) {
+      button.classList.remove("playing");
+      document.getElementById("audioLevel").textContent = "BLOCKED";
+      console.error("Audio playback failed", error);
+    }
   } else {
     audioElement.pause();
     button.classList.remove("playing");
