@@ -41,7 +41,7 @@ const state = {
   fxEdgeStrength: 0.48,
   fxBubbleBlur: true,
   fxBubbleStrength: 0.04,
-  fxBubbleBlurDensity: 0.55,
+  fxBubbleBlurDensity: 1,
   fxBubbleOutlinePx: 1,
   fxBubbleGlowColor: "#8f8796",
   fxEmbossDepth: false,
@@ -72,6 +72,7 @@ const state = {
   audioMidLevel: 0,
   audioTrebleLevel: 0,
   audioBeat: 0,
+  audioTransient: 0,
   audioAverage: 0.04,
   audioMotionPhase: 0,
   seed: Date.now(),
@@ -189,7 +190,7 @@ function isAudioMotionActive() {
 
 function audioMotion() {
   if (!isAudioMotionActive()) {
-    return { active: false, energy: 0, bass: 0, mid: 0, treble: 0, beat: 0, phase: state.audioMotionPhase };
+    return { active: false, energy: 0, bass: 0, mid: 0, treble: 0, beat: 0, transient: 0, phase: state.audioMotionPhase };
   }
   return {
     active: true,
@@ -198,6 +199,7 @@ function audioMotion() {
     mid: clamp(state.audioMidLevel, 0, 1),
     treble: clamp(state.audioTrebleLevel, 0, 1),
     beat: clamp(state.audioBeat, 0, 1),
+    transient: clamp(state.audioTransient, 0, 1),
     phase: state.audioMotionPhase,
   };
 }
@@ -1543,8 +1545,9 @@ function drawAudioTravellers() {
   const bctx = blobMask.getContext("2d");
   const liquidColor = state.strokeAlpha > 0.04 ? state.strokeColor : state.fxBubbleGlowColor || state.outlineColor || "#ff7bc4";
   const glowColor = state.fxBubbleGlowColor || mixRgb(liquidColor, "#ffffff", 0.42);
-  const blobCount = Math.min(48, Math.max(12, Math.floor(12 + motion.energy * 18 + motion.beat * 12)));
-  const trailSteps = 5 + Math.floor(motion.mid * 4);
+  const impact = clamp(motion.beat * 0.75 + motion.transient * 0.95 + motion.bass * 0.45, 0, 1);
+  const blobCount = Math.min(64, Math.max(16, Math.floor(16 + motion.energy * 22 + impact * 24)));
+  const trailSteps = 6 + Math.floor(motion.mid * 4 + impact * 3);
 
   bctx.save();
   bctx.scale(scale, scale);
@@ -1554,38 +1557,38 @@ function drawAudioTravellers() {
     const segment = segments[pick];
     const offset = stableNoise(i * 17.71 + segment.phase * 3.1);
     const direction = stableNoise(i * 9.91 + state.seed * 0.00023) > 0.5 ? 1 : -1;
-    const travelSpeed = 0.045 + motion.bass * 0.16 + motion.mid * 0.055 + stableNoise(i * 5.37) * 0.04;
-    const travel = offset + direction * motion.phase * travelSpeed + motion.beat * (0.018 + i * 0.0009);
+    const travelSpeed = 0.058 + motion.bass * 0.24 + motion.mid * 0.075 + impact * 0.12 + stableNoise(i * 5.37) * 0.05;
+    const travel = offset + direction * motion.phase * travelSpeed + impact * (0.035 + i * 0.0012);
     const point = pointOnPath(segment.points, travel, segment.progress);
     if (!point) continue;
 
-    const pulse = 0.72 + motion.bass * 1.65 + motion.beat * 2.2 + stableNoise(i * 3.19 + motion.phase * 7.1) * 0.48;
-    const radius = Math.max(3.5, segment.width * (0.9 + pulse * 0.55));
-    const angle = point.angle + Math.sin(motion.phase * 4 + i) * 0.24;
-    const stretch = 1 + motion.bass * 0.45 + stableNoise(i * 2.47) * 0.42;
+    const pulse = 0.82 + motion.bass * 1.95 + motion.beat * 2.6 + motion.transient * 3 + stableNoise(i * 3.19 + motion.phase * 7.1) * 0.52;
+    const radius = Math.max(4.2, segment.width * (1 + pulse * 0.62));
+    const angle = point.angle + Math.sin(motion.phase * 5.8 + i) * (0.24 + impact * 0.32);
+    const stretch = 1.08 + motion.bass * 0.55 + impact * 0.5 + stableNoise(i * 2.47) * 0.45;
 
-    bctx.fillStyle = `rgba(255, 255, 255, ${0.48 + motion.beat * 0.24})`;
+    bctx.fillStyle = `rgba(255, 255, 255, ${0.54 + impact * 0.32})`;
     bctx.beginPath();
     bctx.ellipse(point.x, point.y, radius * stretch, radius * (0.72 + motion.treble * 0.18), angle, 0, Math.PI * 2);
     bctx.fill();
 
     for (let trail = 1; trail <= trailSteps; trail += 1) {
-      const trailPoint = pointOnPath(segment.points, travel - direction * trail * (0.012 + motion.mid * 0.007), segment.progress);
+      const trailPoint = pointOnPath(segment.points, travel - direction * trail * (0.014 + motion.mid * 0.008 + impact * 0.007), segment.progress);
       if (!trailPoint) continue;
       const falloff = 1 - trail / (trailSteps + 1);
       const trailRadius = Math.max(2.2, radius * (0.34 + falloff * 0.42));
-      bctx.fillStyle = `rgba(255, 255, 255, ${0.18 + falloff * (0.34 + motion.energy * 0.2)})`;
+      bctx.fillStyle = `rgba(255, 255, 255, ${0.22 + falloff * (0.4 + motion.energy * 0.22 + impact * 0.2)})`;
       bctx.beginPath();
       bctx.ellipse(trailPoint.x, trailPoint.y, trailRadius * (1 + motion.bass * 0.28), trailRadius * 0.7, trailPoint.angle, 0, Math.PI * 2);
       bctx.fill();
     }
 
-    const satellites = 1 + Math.floor(stableNoise(i * 6.13 + motion.phase) * 3);
+    const satellites = 1 + Math.floor(stableNoise(i * 6.13 + motion.phase) * (3 + impact * 3));
     for (let j = 0; j < satellites; j += 1) {
       const theta = point.angle + Math.PI / 2 + (j - 1) * 0.88 + Math.sin(motion.phase * 3.6 + i + j) * 0.36;
-      const dist = radius * (0.8 + stableNoise(i * 8.1 + j) * 1.2);
-      const satRadius = Math.max(1.7, radius * (0.18 + stableNoise(i * 11.9 + j) * 0.24) * (1 + motion.beat * 0.8));
-      bctx.fillStyle = `rgba(255, 255, 255, ${0.2 + motion.treble * 0.3})`;
+      const dist = radius * (0.75 + stableNoise(i * 8.1 + j) * (1.25 + impact * 0.7));
+      const satRadius = Math.max(1.9, radius * (0.2 + stableNoise(i * 11.9 + j) * 0.3) * (1 + impact * 1.15));
+      bctx.fillStyle = `rgba(255, 255, 255, ${0.24 + motion.treble * 0.3 + impact * 0.18})`;
       bctx.beginPath();
       bctx.arc(point.x + Math.cos(theta) * dist, point.y + Math.sin(theta) * dist, satRadius, 0, Math.PI * 2);
       bctx.fill();
@@ -1595,35 +1598,35 @@ function drawAudioTravellers() {
 
   const blurredMask = createFxCanvas(scale);
   const blurredCtx = blurredMask.getContext("2d");
-  blurredCtx.filter = `blur(${((7 + motion.bass * 12 + motion.beat * 6) * scale).toFixed(2)}px)`;
+  blurredCtx.filter = `blur(${((8 + motion.bass * 14 + impact * 11) * scale).toFixed(2)}px)`;
   blurredCtx.drawImage(blobMask, 0, 0);
 
   const liquidMask = thresholdMaskWithTexture(
     blurredMask,
-    22 + motion.treble * 20 - motion.beat * 4,
-    0.28 + motion.treble * 0.34 + motion.beat * 0.18,
+    18 + motion.treble * 18 - impact * 8,
+    0.3 + motion.treble * 0.32 + impact * 0.24,
     motion.phase
   );
-  const pathClip = drawExpandedPathMask(1.6 + motion.bass * 0.35, 5 + motion.energy * 8 + motion.beat * 5, 2 + motion.mid * 3, scale);
+  const pathClip = drawExpandedPathMask(1.75 + motion.bass * 0.46 + impact * 0.32, 6 + motion.energy * 9 + impact * 10, 2 + motion.mid * 3 + impact * 2, scale);
   const maskCtx = liquidMask.getContext("2d");
   maskCtx.globalCompositeOperation = "destination-in";
   maskCtx.drawImage(pathClip, 0, 0);
 
   const glowMask = createFxCanvas(scale);
   const glowCtx = glowMask.getContext("2d");
-  glowCtx.filter = `blur(${((5 + motion.energy * 10 + motion.beat * 4) * scale).toFixed(2)}px)`;
+  glowCtx.filter = `blur(${((6 + motion.energy * 12 + impact * 8) * scale).toFixed(2)}px)`;
   glowCtx.drawImage(liquidMask, 0, 0);
   glowCtx.globalCompositeOperation = "destination-in";
   glowCtx.drawImage(pathClip, 0, 0);
 
-  const liquidLayer = tintedMaskLayer(liquidMask, liquidColor, 0.58 + motion.beat * 0.24);
-  const glowLayer = tintedMaskLayer(glowMask, glowColor, 0.16 + motion.energy * 0.26);
-  const rimMask = subtractMask(liquidMask, erodeMask(liquidMask, 1 + motion.beat * 1.2));
-  const rimLayer = tintedMaskLayer(rimMask, mixRgb(liquidColor, "#ffffff", 0.55), 0.52 + motion.treble * 0.18);
+  const liquidLayer = tintedMaskLayer(liquidMask, liquidColor, 0.62 + impact * 0.28);
+  const glowLayer = tintedMaskLayer(glowMask, glowColor, 0.18 + motion.energy * 0.28 + impact * 0.18);
+  const rimMask = subtractMask(liquidMask, erodeMask(liquidMask, 1 + impact * 1.8));
+  const rimLayer = tintedMaskLayer(rimMask, mixRgb(liquidColor, "#ffffff", 0.62), 0.58 + motion.treble * 0.18 + impact * 0.14);
 
-  drawFxLayer(glowLayer, "screen", 0.78);
-  drawFxLayer(liquidLayer, "source-over", 0.62 + motion.energy * 0.2);
-  drawFxLayer(rimLayer, "screen", 0.9);
+  drawFxLayer(glowLayer, "screen", 0.82);
+  drawFxLayer(liquidLayer, "source-over", 0.7 + motion.energy * 0.22);
+  drawFxLayer(rimLayer, "screen", 0.95);
 }
 
 function draw() {
@@ -1661,7 +1664,7 @@ function tick(now) {
   updateAudioLevel();
   const audioActive = isAudioMotionActive();
   const phaseSpeed = 0.00035 + clamp(state.speed, 0.002, 0.08) * 0.024;
-  state.audioMotionPhase += delta * phaseSpeed * (1 + state.audioLevel * 2.4 + state.audioBeat * 1.8);
+  state.audioMotionPhase += delta * phaseSpeed * (1 + state.audioLevel * 5.2 + state.audioBassLevel * 2.8 + state.audioBeat * 4.2 + state.audioTransient * 5.8);
 
   if (state.animate) {
     if (state.progress < 1) {
@@ -1795,7 +1798,7 @@ async function ensureAudioContext() {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.82;
+    analyser.smoothingTimeConstant = 0.52;
     analyser.connect(audioContext.destination);
   }
   if (audioContext.state === "suspended") await audioContext.resume();
@@ -1824,6 +1827,7 @@ function updateAudioLevel() {
     state.audioMidLevel *= 0.9;
     state.audioTrebleLevel *= 0.9;
     state.audioBeat *= 0.88;
+    state.audioTransient *= 0.82;
     return;
   }
   const data = new Uint8Array(analyser.frequencyBinCount);
@@ -1841,20 +1845,23 @@ function updateAudioLevel() {
   const rawBass = averageRange(0.004, 0.08);
   const rawMid = averageRange(0.08, 0.36);
   const rawTreble = averageRange(0.36, 0.92);
-  const rawEnergy = clamp(rawBass * 0.48 + rawMid * 0.34 + rawTreble * 0.18, 0, 1);
+  const weightedEnergy = clamp(rawBass * 0.56 + rawMid * 0.31 + rawTreble * 0.13, 0, 1);
+  const rawEnergy = Math.pow(weightedEnergy, 0.82);
   const previousEnergy = state.audioLevel;
+  const bassTransient = Math.max(0, rawBass - state.audioBassLevel);
+  const transient = Math.max(0, rawEnergy - previousEnergy, bassTransient * 0.9);
 
-  state.audioBassLevel = smooth(state.audioBassLevel, rawBass, 0.48, 0.16);
-  state.audioMidLevel = smooth(state.audioMidLevel, rawMid, 0.36, 0.13);
-  state.audioTrebleLevel = smooth(state.audioTrebleLevel, rawTreble, 0.32, 0.12);
-  state.audioLevel = smooth(state.audioLevel, rawEnergy, 0.42, 0.15);
-  state.audioAverage = state.audioAverage * 0.985 + rawEnergy * 0.015;
+  state.audioBassLevel = smooth(state.audioBassLevel, rawBass, 0.74, 0.22);
+  state.audioMidLevel = smooth(state.audioMidLevel, rawMid, 0.56, 0.18);
+  state.audioTrebleLevel = smooth(state.audioTrebleLevel, rawTreble, 0.5, 0.16);
+  state.audioLevel = smooth(state.audioLevel, rawEnergy, 0.68, 0.22);
+  state.audioTransient = Math.max(transient * 3.8, state.audioTransient * 0.64);
+  state.audioAverage = state.audioAverage * 0.97 + rawEnergy * 0.03;
 
-  const transient = Math.max(0, rawEnergy - previousEnergy);
-  const beatThreshold = Math.max(0.055, state.audioAverage * 1.32);
-  const beatHit = rawBass > beatThreshold && transient > 0.018;
-  const beatDecay = 0.875 + clamp(state.visibleTime, 0.2, 3) * 0.032;
-  state.audioBeat = beatHit ? Math.min(1, state.audioBeat + 0.72 + transient * 2.4) : state.audioBeat * Math.min(0.975, beatDecay);
+  const beatThreshold = Math.max(0.038, state.audioAverage * 1.08);
+  const beatHit = rawBass > beatThreshold && transient > 0.008;
+  const beatDecay = 0.79 + clamp(state.visibleTime, 0.2, 3) * 0.035;
+  state.audioBeat = beatHit ? Math.min(1, Math.max(state.audioBeat * 0.45, 0.58 + transient * 3.8 + rawBass * 0.36)) : state.audioBeat * Math.min(0.94, beatDecay);
 
   document.getElementById("audioLevel").textContent = state.audioLevel.toFixed(2);
 }
