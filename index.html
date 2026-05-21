@@ -146,8 +146,22 @@
             <input data-key="circleGuideDensity" type="range" min="0.1" max="1" step="0.01" />
           </div>
           <div class="field">
-            <label>Circle Influence</label>
+            <label>Curve Attraction</label>
             <input data-key="circleGuideInfluence" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="half-grid">
+            <div class="field">
+              <label>Min Radius %</label>
+              <input data-key="circleMinRadius" type="range" min="1" max="12" step="0.1" />
+            </div>
+            <div class="field">
+              <label>Max Radius %</label>
+              <input data-key="circleMaxRadius" type="range" min="2" max="18" step="0.1" />
+            </div>
+          </div>
+          <div class="field">
+            <label>No-overlap Gap</label>
+            <input data-key="noOverlapGap" type="range" min="4" max="80" step="1" />
           </div>
         </section>
 
@@ -192,12 +206,12 @@
             <p>Motion</p>
             <label class="switch-row">
               <input id="animateToggle" type="checkbox" />
-              <span>Animate</span>
+              <span>Replay</span>
             </label>
           </div>
           <div class="inner-radio"><span>Styles</span></div>
           <div class="field">
-            <label>Visible Time</label>
+            <label>Replay Hold</label>
             <input data-key="visibleTime" type="range" min="0.2" max="3" step="0.05" />
           </div>
           <div class="field">
@@ -215,7 +229,7 @@
             </div>
           </div>
           <div class="inner-radio"><span>Input</span></div>
-          <button id="demoAudio" class="play-btn">Demon Box Audio</button>
+          <button id="demoAudio" class="play-btn">Demo Audio</button>
           <label class="upload-label">
             <input id="audioUpload" type="file" accept="audio/*" />
             Upload Audio
@@ -229,11 +243,11 @@
           </div>
           <div class="color-label-row">
             <span>Color</span>
-            <span id="selectedColorTag">black</span>
+            <span id="selectedColorTag">WHITE OUTLINES</span>
           </div>
           <div id="colorControls" class="color-controls">
-            <label class="color-option selected">
-              <input type="radio" name="colorChoice" value="black" checked />
+            <label class="color-option">
+              <input type="radio" name="colorChoice" value="black" />
               <span class="swatch black"></span>
             </label>
             <label class="color-option">
@@ -244,8 +258,8 @@
               <input type="radio" name="colorChoice" value="white" />
               <span class="swatch white"></span>
             </label>
-            <label class="color-option">
-              <input type="radio" name="colorChoice" value="white outlines" />
+            <label class="color-option selected">
+              <input type="radio" name="colorChoice" value="white outlines" checked />
               <span class="swatch outline-white"></span>
             </label>
           </div>
@@ -362,6 +376,18 @@
           <div class="field">
             <label>Bubble Blur Color</label>
             <input id="fxBubbleColorInput" type="color" value="#8f8796" />
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="fxGlassToggle" type="checkbox" checked />
+            <span>Glass Polish / Transparency</span>
+          </label>
+          <div class="field">
+            <label>Glass Opacity</label>
+            <input data-key="fxGlassOpacity" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Glass Shine</label>
+            <input data-key="fxGlassShine" type="range" min="0" max="1" step="0.01" />
           </div>
           <label class="switch-row style-switch-row">
             <input id="fxEmbossToggle" type="checkbox" />

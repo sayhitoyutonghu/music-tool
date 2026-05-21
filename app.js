@@ -27,6 +27,9 @@ const state = {
   curveSmoothness: 0.7,
   circleGuideDensity: 0.52,
   circleGuideInfluence: 0.68,
+  circleMinRadius: 2.4,
+  circleMaxRadius: 9.5,
+  noOverlapGap: 18,
   mirrorMode: "horizontal",
   startFromBottom: true,
   useCircleScaffold: true,
@@ -44,13 +47,16 @@ const state = {
   fxBubbleBlurDensity: 1,
   fxBubbleOutlinePx: 1,
   fxBubbleGlowColor: "#8f8796",
+  fxGlassPolish: true,
+  fxGlassOpacity: 0.42,
+  fxGlassShine: 0.58,
   fxEmbossDepth: false,
   fxEmbossStrength: 0.34,
   fxHalftoneNoise: false,
   fxHalftoneMix: 0.38,
   visibleTime: 1.3,
   speed: 0.012,
-  colorChoice: "black",
+  colorChoice: "white outlines",
   bgColor: "#f8f8f6",
   bgAlpha: 1,
   strokeColor: "#050505",
@@ -64,6 +70,7 @@ const state = {
   paths: [],
   blankZones: [],
   guideCircles: [],
+  guideLinks: [],
   progress: 1,
   hold: 0,
   lastFrame: performance.now(),
@@ -345,6 +352,12 @@ function syncInputs() {
   document.getElementById("textAreaHValue").textContent = `${Math.round(state.textAreaH)}%`;
 }
 
+function setCanvasFillAlpha(value) {
+  state.bgAlpha = clamp(value, 0, 1);
+  document.getElementById("bgAlphaInput").value = state.bgAlpha;
+  document.getElementById("bgAlphaValue").textContent = state.bgAlpha.toFixed(2);
+}
+
 function resizeCanvas() {
   canvas.width = Math.round(state.canvasWidth);
   canvas.height = Math.round(state.canvasHeight);
@@ -409,6 +422,16 @@ function pointBlocked(x, y, pad = 0) {
   return pointInTextRect(x, y, pad) || pointInLogoRect(x, y, pad) || pointInBlankZone(x, y);
 }
 
+function segmentHitsBlocked(a, b, pad = 0, samples = 10) {
+  for (let i = 1; i < samples; i += 1) {
+    const t = i / samples;
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+    if (pointBlocked(x, y, pad)) return true;
+  }
+  return false;
+}
+
 function pushAwayFromCenter(point, amount) {
   const cx = state.canvasWidth / 2;
   const cy = state.canvasHeight / 2;
@@ -436,33 +459,102 @@ function createBlankZones() {
 
 function createCircleGuides(options = {}) {
   state.guideCircles = [];
+  state.guideLinks = [];
   if (!state.useCircleScaffold) return;
 
   const minSide = Math.min(state.canvasWidth, state.canvasHeight);
   const safeMargin = getPatternSafeMarginPx();
   const density = clamp(options.circleGuideDensity ?? state.circleGuideDensity, 0.1, 1);
-  const count = Math.floor(16 + density * 58);
-  const maxAttempts = count * 16;
-  const minR = minSide * (0.012 + (1 - density) * 0.01);
-  const maxR = minSide * (0.05 + density * 0.05);
+  const totalCount = Math.floor(18 + density * 66);
+  const baseCount = state.mirrorMode === "none" ? totalCount : Math.ceil(totalCount / 2);
+  const maxAttempts = baseCount * 22;
+  const minR = minSide * clamp(state.circleMinRadius, 1, 12) / 100;
+  const maxR = minSide * Math.max(clamp(state.circleMaxRadius, 2, 18), state.circleMinRadius + 0.5) / 100;
+  const baseCircles = [];
 
-  for (let i = 0; i < maxAttempts && state.guideCircles.length < count; i += 1) {
+  for (let i = 0; i < maxAttempts && baseCircles.length < baseCount; i += 1) {
     const r = rand(minR, maxR);
     const edge = Math.min(minSide * 0.42, safeMargin + r);
-    const x = rand(edge, state.canvasWidth - edge);
-    const yBase = state.startFromBottom ? Math.pow(rand(), 2.4) : rand();
-    const y = clamp((1 - yBase * 0.96) * state.canvasHeight, edge, state.canvasHeight - edge);
-    if (pointInTextRect(x, y, r * 1.2) || pointInBlankZone(x, y)) continue;
+    let xMin = edge;
+    let xMax = state.canvasWidth - edge;
+    let yMin = edge;
+    let yMax = state.canvasHeight - edge;
+
+    if (state.mirrorMode === "horizontal") {
+      xMax = Math.max(xMin, state.canvasWidth / 2 - minSide * 0.025 - r * 0.3);
+    } else if (state.mirrorMode === "vertical") {
+      if (state.startFromBottom) {
+        yMin = Math.min(yMax, state.canvasHeight / 2 + minSide * 0.025 + r * 0.3);
+      } else {
+        yMax = Math.max(yMin, state.canvasHeight / 2 - minSide * 0.025 - r * 0.3);
+      }
+    }
+
+    const x = rand(xMin, xMax);
+    const yBase = state.startFromBottom ? Math.pow(rand(), 2.15) : rand();
+    let y = clamp((1 - yBase * 0.96) * state.canvasHeight, yMin, yMax);
+    if (state.mirrorMode === "vertical" && !state.startFromBottom) y = rand(yMin, yMax);
+    const candidate = { x, y, r };
+    if (pointInTextRect(x, y, r * 1.35) || pointInLogoRect(x, y, r * 1.1) || pointInBlankZone(x, y)) continue;
 
     let collide = false;
-    for (const c of state.guideCircles) {
-      if (Math.hypot(x - c.x, y - c.y) < r + c.r + minSide * 0.006) {
+    for (const c of baseCircles) {
+      if (Math.hypot(x - c.x, y - c.y) < r + c.r + minSide * 0.008) {
         collide = true;
         break;
       }
     }
     if (collide) continue;
-    state.guideCircles.push({ x, y, r });
+    baseCircles.push(candidate);
+  }
+
+  const addCircle = (circle) => {
+    if (
+      circle.x < circle.r ||
+      circle.x > state.canvasWidth - circle.r ||
+      circle.y < circle.r ||
+      circle.y > state.canvasHeight - circle.r ||
+      pointBlocked(circle.x, circle.y, circle.r * 1.15)
+    ) {
+      return;
+    }
+    state.guideCircles.push(circle);
+  };
+
+  for (const circle of baseCircles) {
+    addCircle(circle);
+    if (state.mirrorMode === "horizontal") {
+      addCircle({ ...circle, x: state.canvasWidth - circle.x, mirrorOf: circle });
+    } else if (state.mirrorMode === "vertical") {
+      addCircle({ ...circle, y: state.canvasHeight - circle.y, mirrorOf: circle });
+    }
+  }
+
+  buildGuideLinks();
+}
+
+function buildGuideLinks() {
+  state.guideLinks = [];
+  if (!state.guideCircles.length) return;
+
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const maxLinkDistance = minSide * 0.32;
+  const seen = new Set();
+  for (let i = 0; i < state.guideCircles.length; i += 1) {
+    const circle = state.guideCircles[i];
+    const neighbors = state.guideCircles
+      .map((other, index) => ({ other, index, d: Math.hypot(circle.x - other.x, circle.y - other.y) }))
+      .filter(({ index, d }) => index !== i && d < maxLinkDistance)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 3);
+
+    for (const { other, index } of neighbors) {
+      const key = i < index ? `${i}-${index}` : `${index}-${i}`;
+      if (seen.has(key)) continue;
+      if (segmentHitsBlocked(circle, other, Math.max(circle.r, other.r) * 0.35, 8)) continue;
+      seen.add(key);
+      state.guideLinks.push({ a: circle, b: other });
+    }
   }
 }
 
@@ -498,6 +590,162 @@ function createSeedPoint(signX, signY, margin, gapPad) {
       : clamp(cy + signY * rand(gapPad + 20, state.canvasHeight * 0.42), margin, state.canvasHeight - margin);
   }
   return { x: clamp(x, margin, state.canvasWidth - margin), y: clamp(y, margin, state.canvasHeight - margin) };
+}
+
+function circleAllowedForSign(circle, signX, signY) {
+  if (state.mirrorMode === "horizontal") {
+    return signX < 0 ? circle.x <= state.canvasWidth / 2 : circle.x >= state.canvasWidth / 2;
+  }
+  if (state.mirrorMode === "vertical") {
+    return signY > 0 ? circle.y >= state.canvasHeight / 2 : circle.y <= state.canvasHeight / 2;
+  }
+  return true;
+}
+
+function chooseCircleChain(signX, signY, desiredLength) {
+  if (!state.useCircleScaffold || state.guideCircles.length < 2) return [];
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const pool = state.guideCircles.filter((circle) => (
+    circleAllowedForSign(circle, signX, signY) &&
+    !pointBlocked(circle.x, circle.y, circle.r * 1.1)
+  ));
+  if (pool.length < 2) return [];
+
+  const edgeBias = state.startFromBottom
+    ? (circle) => state.canvasHeight - circle.y
+    : (circle) => Math.abs(circle.y - state.canvasHeight / 2);
+  const starters = [...pool].sort((a, b) => edgeBias(a) - edgeBias(b));
+  const start = starters[Math.floor(rand(0, Math.min(starters.length, 8)))];
+  const chain = [start];
+  const used = new Set([start]);
+  const targetDistance = minSide * rand(0.12, 0.24);
+
+  while (chain.length < desiredLength) {
+    const current = chain[chain.length - 1];
+    const candidates = pool
+      .filter((circle) => !used.has(circle) && !segmentHitsBlocked(current, circle, Math.max(current.r, circle.r) * 0.28, 8))
+      .map((circle) => {
+        const d = Math.hypot(circle.x - current.x, circle.y - current.y);
+        const yDirectionPenalty = state.startFromBottom
+          ? Math.max(0, circle.y - current.y + minSide * 0.02) * 1.8
+          : 0;
+        const centerPenalty = pointInTextRect(
+          (circle.x + current.x) / 2,
+          (circle.y + current.y) / 2,
+          minSide * 0.035,
+        ) ? minSide * 2 : 0;
+        const distancePenalty = Math.abs(d - targetDistance) * 0.34;
+        return {
+          circle,
+          score: d + yDirectionPenalty + centerPenalty + distancePenalty + rand(0, minSide * 0.05),
+        };
+      })
+      .sort((a, b) => a.score - b.score);
+
+    if (!candidates.length) break;
+    const next = candidates[0].circle;
+    chain.push(next);
+    used.add(next);
+  }
+
+  return chain.length >= 2 ? chain : [];
+}
+
+function directedAngleDelta(from, to, direction) {
+  let diff = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  if (direction > 0 && diff < 0) diff += Math.PI * 2;
+  if (direction < 0 && diff > 0) diff -= Math.PI * 2;
+  const magnitude = clamp(Math.abs(diff), 0.72, 2.85);
+  return magnitude * direction;
+}
+
+function pushPointIfClear(points, point, pad) {
+  if (pointBlocked(point.x, point.y, pad)) return;
+  const previous = points[points.length - 1];
+  if (previous && Math.hypot(point.x - previous.x, point.y - previous.y) < 2) return;
+  points.push(point);
+}
+
+function createCircleScaffoldPath(signX, signY, options = {}) {
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const guideInfluence = state.useCircleScaffold ? clamp(options.circleGuideInfluence ?? state.circleGuideInfluence, 0, 1) : 0;
+  if (guideInfluence < 0.08 || state.guideCircles.length < 2) return null;
+
+  const smoothness = clamp(options.curveSmoothness ?? state.curveSmoothness, 0, 1);
+  const chainLength = Math.floor(rand(2.8, 5.8 + guideInfluence * 2.2));
+  const chain = chooseCircleChain(signX, signY, chainLength);
+  if (chain.length < 2) return null;
+
+  const points = [];
+  const orbitDirection = state.mirrorMode === "horizontal"
+    ? (signX < 0 ? -1 : 1)
+    : (chance(0.5) ? -1 : 1);
+  const gapPad = minSide * 0.018;
+
+  for (let i = 0; i < chain.length; i += 1) {
+    const circle = chain[i];
+    const previous = chain[i - 1];
+    const next = chain[i + 1];
+    const incomingAngle = previous
+      ? Math.atan2(previous.y - circle.y, previous.x - circle.x)
+      : state.startFromBottom
+        ? Math.PI / 2 + rand(-0.55, 0.55)
+        : rand(-Math.PI, Math.PI);
+    const outgoingAngle = next
+      ? Math.atan2(next.y - circle.y, next.x - circle.x)
+      : incomingAngle + orbitDirection * rand(1.0, 2.2);
+    const arcStart = incomingAngle + orbitDirection * rand(0.32, 0.9);
+    const arcEnd = outgoingAngle - orbitDirection * rand(0.22, 0.82);
+    const delta = directedAngleDelta(arcStart, arcEnd, orbitDirection);
+    const arcSteps = Math.floor(rand(6, 12) + (circle.r / minSide) * 42);
+
+    for (let step = 0; step < arcSteps; step += 1) {
+      const t = step / Math.max(1, arcSteps - 1);
+      const wobble = (stableNoise(circle.x * 0.013 + circle.y * 0.017 + step * 1.91) - 0.5) * 0.16;
+      const radius = circle.r * (0.88 + guideInfluence * 0.18 + wobble);
+      const angle = arcStart + delta * t + Math.sin(t * Math.PI) * rand(-0.16, 0.16) * (1 - smoothness * 0.6);
+      pushPointIfClear(points, {
+        x: circle.x + Math.cos(angle) * radius,
+        y: circle.y + Math.sin(angle) * radius,
+      }, gapPad);
+    }
+
+    if (next) {
+      const last = points[points.length - 1];
+      if (!last) continue;
+      const targetAngle = Math.atan2(circle.y - next.y, circle.x - next.x) - orbitDirection * rand(0.2, 0.72);
+      const target = {
+        x: next.x + Math.cos(targetAngle) * next.r * rand(0.82, 1.08),
+        y: next.y + Math.sin(targetAngle) * next.r * rand(0.82, 1.08),
+      };
+      const vx = target.x - last.x;
+      const vy = target.y - last.y;
+      const len = Math.hypot(vx, vy) || 1;
+      const nx = -vy / len;
+      const ny = vx / len;
+      const bend = rand(-0.22, 0.22) * minSide * (0.18 + guideInfluence * 0.18);
+      const bridgeSteps = Math.floor(rand(3, 7));
+      for (let step = 1; step <= bridgeSteps; step += 1) {
+        const t = step / (bridgeSteps + 1);
+        const ease = t * t * (3 - 2 * t);
+        const lift = Math.sin(t * Math.PI) * bend;
+        pushPointIfClear(points, {
+          x: last.x + vx * ease + nx * lift,
+          y: last.y + vy * ease + ny * lift,
+        }, gapPad);
+      }
+    }
+  }
+
+  if (points.length < 8) return null;
+  const smoothed = smoothPolyline(points, Math.round(2 + smoothness * 4), 0.48 + smoothness * 0.36);
+  return {
+    type: "curl",
+    points: simplifyBlockedSegments(smoothed),
+    width: rand(0.48, 1.18) * state.lineThickness,
+    phase: rand(0, Math.PI * 2),
+    branches: [],
+  };
 }
 
 function createCurlPath(signX, signY, options = {}) {
@@ -739,14 +987,18 @@ function buildPattern() {
   const maxAttempts = count * 24;
   const collisionMap = new Map();
   const collisionCell = Math.max(10, state.lineThickness * 1.3);
-  const minDistance = Math.max(8, state.lineThickness * 1.8);
+  const minDistance = Math.max(clamp(state.noOverlapGap, 4, 80), state.lineThickness * 1.45);
   const basePaths = [];
   let attempts = 0;
 
   while (basePaths.length < count && attempts < maxAttempts) {
     attempts += 1;
     const seedSignX = state.mirrorMode === "vertical" ? (chance(0.5) ? -1 : 1) : -1;
-    const path = createCurlPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
+    let path = null;
+    if (state.useCircleScaffold && chance(0.68 + circleInfluenceValue * 0.28)) {
+      path = createCircleScaffoldPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
+    }
+    if (!path) path = createCurlPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
     decoratePath(path, runtime);
     if (path.points.length <= 2) continue;
     const samples = collectPathPoints(path);
@@ -1007,6 +1259,15 @@ function drawPath(points, width, progress, phase) {
 function drawGuideCircles() {
   if (!state.showGuides || !state.guideCircles.length) return;
   ctx.save();
+  for (const link of state.guideLinks) {
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(255, 92, 156, 0.14)";
+    ctx.lineWidth = Math.max(10, Math.min(link.a.r, link.b.r) * 0.42);
+    ctx.lineCap = "round";
+    ctx.moveTo(link.a.x, link.a.y);
+    ctx.lineTo(link.b.x, link.b.y);
+    ctx.stroke();
+  }
   ctx.lineWidth = 1;
   for (const circle of state.guideCircles) {
     ctx.beginPath();
@@ -1223,6 +1484,94 @@ function drawFxLayer(layer, composite = "source-over", alpha = 1) {
   ctx.globalAlpha = clamp(alpha, 0, 1);
   ctx.drawImage(layer, 0, 0, canvas.width, canvas.height);
   ctx.restore();
+}
+
+function drawGlassPolishFx() {
+  if (!state.fxGlassPolish) return;
+  const opacity = clamp(state.fxGlassOpacity, 0, 1);
+  const shine = clamp(state.fxGlassShine, 0, 1);
+  if (opacity < 0.01 && shine < 0.01) return;
+
+  const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
+  const bubbleAmount = clamp(state.fxBubbleStrength, 0, 1);
+  const bodyExpandPx = 24 + bubbleAmount * 34 + state.fxBubbleOutlinePx * 0.9;
+  const shellWidthScale = 1.14 + bubbleAmount * 0.2;
+  const glassColor = state.fxBubbleGlowColor || "#bfffd6";
+  const lightColor = mixRgb(glassColor, "#ffffff", 0.48);
+  const midColor = mixRgb(glassColor, "#ffffff", 0.14);
+  const darkColor = mixRgb(glassColor, "#000000", 0.34);
+
+  const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, 7 + bubbleAmount * 10, scale);
+  const bodyMask = thresholdMask(softUnion, 10 + (1 - opacity) * 9);
+  const innerMask = erodeMask(bodyMask, Math.max(1, (5 + state.fxBubbleOutlinePx * 0.55) * scale));
+  const rimMask = subtractMask(bodyMask, innerMask);
+
+  const glassLayer = createFxCanvas(scale);
+  glassLayer.width = bodyMask.width;
+  glassLayer.height = bodyMask.height;
+  const glassCtx = glassLayer.getContext("2d");
+  glassCtx.drawImage(bodyMask, 0, 0);
+  glassCtx.globalCompositeOperation = "source-in";
+  const glassGradient = glassCtx.createLinearGradient(0, 0, glassLayer.width, glassLayer.height);
+  glassGradient.addColorStop(0, colorToRgba(lightColor, 0.12 + opacity * 0.2));
+  glassGradient.addColorStop(0.44, colorToRgba(midColor, 0.08 + opacity * 0.18));
+  glassGradient.addColorStop(1, colorToRgba(darkColor, 0.04 + opacity * 0.14));
+  glassCtx.fillStyle = glassGradient;
+  glassCtx.fillRect(0, 0, glassLayer.width, glassLayer.height);
+  drawFxLayer(glassLayer, "source-over", 0.86);
+
+  const depthLayer = createFxCanvas(scale);
+  depthLayer.width = bodyMask.width;
+  depthLayer.height = bodyMask.height;
+  const depthCtx = depthLayer.getContext("2d");
+  depthCtx.drawImage(innerMask, 0, 0);
+  depthCtx.globalCompositeOperation = "source-in";
+  const depthGradient = depthCtx.createRadialGradient(
+    depthLayer.width * 0.42,
+    depthLayer.height * 0.25,
+    depthLayer.width * 0.05,
+    depthLayer.width * 0.6,
+    depthLayer.height * 0.72,
+    Math.max(depthLayer.width, depthLayer.height) * 0.66,
+  );
+  depthGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+  depthGradient.addColorStop(0.54, colorToRgba(darkColor, opacity * 0.04));
+  depthGradient.addColorStop(1, colorToRgba(darkColor, opacity * 0.16));
+  depthCtx.fillStyle = depthGradient;
+  depthCtx.fillRect(0, 0, depthLayer.width, depthLayer.height);
+  drawFxLayer(depthLayer, "multiply", 0.58 + opacity * 0.18);
+
+  const pathGlowLayer = createFxCanvas(scale);
+  const pathGlowCtx = pathGlowLayer.getContext("2d");
+  pathGlowCtx.save();
+  pathGlowCtx.scale(scale, scale);
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, glassColor, opacity * (0.08 + shine * 0.14), {
+      widthScale: 1.25 + shine * 0.36,
+      expandPx: bodyExpandPx * (0.08 + shine * 0.18),
+      blur: (8 + shine * 12) * scale,
+    }, pathGlowCtx);
+    strokePolyline(points, width, progress, "#ffffff", shine * (0.05 + opacity * 0.12), {
+      widthScale: 0.92 + shine * 0.22,
+      expandPx: bodyExpandPx * 0.04,
+      blur: (3 + shine * 5) * scale,
+      offsetX: -1.8 - shine * 1.2,
+      offsetY: -1.8 - shine * 1.2,
+    }, pathGlowCtx);
+  });
+  pathGlowCtx.restore();
+  pathGlowCtx.globalCompositeOperation = "destination-in";
+  pathGlowCtx.drawImage(bodyMask, 0, 0);
+  drawFxLayer(pathGlowLayer, "screen", 0.72 + shine * 0.2);
+
+  const rimLayer = tintedMaskLayer(rimMask, "#ffffff", 0.18 + shine * 0.26);
+  const rimCtx = rimLayer.getContext("2d");
+  rimCtx.save();
+  rimCtx.globalCompositeOperation = "screen";
+  rimCtx.filter = `blur(${Math.max(0.8, (1.3 + shine * 1.8) * scale).toFixed(2)}px)`;
+  rimCtx.drawImage(tintedMaskLayer(rimMask, "#ffffff", 0.2 + shine * 0.22), 0, 0);
+  rimCtx.restore();
+  drawFxLayer(rimLayer, "screen", 0.68 + shine * 0.18);
 }
 
 function drawEdgeLightShadowFx() {
@@ -1641,6 +1990,7 @@ function draw() {
   ctx.fillStyle = hexToRgba(state.bgColor, state.bgAlpha);
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   drawGuideCircles();
+  drawGlassPolishFx();
 
   for (const path of state.paths) {
     drawPath(path.points, path.width, state.progress, path.phase);
@@ -1669,12 +2019,14 @@ function tick(now) {
 
   if (state.animate) {
     if (state.progress < 1) {
-      state.progress = clamp(state.progress + state.speed * delta * (1 + state.audioLevel * 1.8), 0, 1);
+      state.progress = clamp(state.progress + state.speed * delta, 0, 1);
       draw();
     } else {
       state.hold += delta;
       if (state.hold > state.visibleTime * 1000) {
-        buildPattern();
+        state.progress = 0;
+        state.hold = 0;
+        draw();
       } else {
         draw();
       }
@@ -1877,7 +2229,7 @@ async function toggleDemoAudio() {
     gainNode = null;
     demoPlaying = false;
     button.classList.remove("playing");
-    button.textContent = "Demon Box Audio";
+    button.textContent = "Demo Audio";
     return;
   }
 
@@ -1943,7 +2295,7 @@ async function toggleUploadedAudio() {
       demoPlaying = false;
       const demoButton = document.getElementById("demoAudio");
       demoButton.classList.remove("playing");
-      demoButton.textContent = "Demon Box Audio";
+      demoButton.textContent = "Demo Audio";
     }
     try {
       await audioElement.play();
@@ -1986,6 +2338,7 @@ async function handleBackgroundUpload(event) {
     backgroundImageUrl = imageUrl;
     document.getElementById("clearBg").disabled = false;
     document.getElementById("bgFileName").textContent = file.name;
+    setCanvasFillAlpha(0);
     draw();
   } catch {
     URL.revokeObjectURL(imageUrl);
@@ -2044,6 +2397,9 @@ function bindControls() {
     "curveSmoothness",
     "circleGuideDensity",
     "circleGuideInfluence",
+    "circleMinRadius",
+    "circleMaxRadius",
+    "noOverlapGap",
     "logoX",
     "logoY",
     "logoW",
@@ -2143,6 +2499,10 @@ function bindControls() {
   });
   document.getElementById("fxBubbleToggle").addEventListener("change", (event) => {
     state.fxBubbleBlur = event.target.checked;
+    draw();
+  });
+  document.getElementById("fxGlassToggle").addEventListener("change", (event) => {
+    state.fxGlassPolish = event.target.checked;
     draw();
   });
   document.getElementById("fxEmbossToggle").addEventListener("change", (event) => {
@@ -2261,6 +2621,7 @@ document.getElementById("crayonToggle").checked = state.fxWaxTexture;
 document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
 document.getElementById("fxEdgeToggle").checked = state.fxEdgeLightShadow;
 document.getElementById("fxBubbleToggle").checked = state.fxBubbleBlur;
+document.getElementById("fxGlassToggle").checked = state.fxGlassPolish;
 document.getElementById("fxPatternColorInput").value = state.strokeColor;
 document.getElementById("fxBubbleColorInput").value = state.fxBubbleGlowColor;
 document.getElementById("fxEmbossToggle").checked = state.fxEmbossDepth;
