@@ -68,6 +68,12 @@ const state = {
   hold: 0,
   lastFrame: performance.now(),
   audioLevel: 0,
+  audioBassLevel: 0,
+  audioMidLevel: 0,
+  audioTrebleLevel: 0,
+  audioBeat: 0,
+  audioAverage: 0.04,
+  audioMotionPhase: 0,
   seed: Date.now(),
 };
 
@@ -169,6 +175,29 @@ function updateTextSeedMeta(text) {
   }
   const factors = textSeedFactors(text);
   meta.textContent = factors.label;
+}
+
+function isAudioPlaying() {
+  return demoPlaying || Boolean(audioElement && !audioElement.paused);
+}
+
+function isAudioMotionActive() {
+  return isAudioPlaying() || state.audioLevel > 0.003 || state.audioBeat > 0.003;
+}
+
+function audioMotion() {
+  if (!isAudioMotionActive()) {
+    return { active: false, energy: 0, bass: 0, mid: 0, treble: 0, beat: 0, phase: state.audioMotionPhase };
+  }
+  return {
+    active: true,
+    energy: clamp(state.audioLevel, 0, 1),
+    bass: clamp(state.audioBassLevel, 0, 1),
+    mid: clamp(state.audioMidLevel, 0, 1),
+    treble: clamp(state.audioTrebleLevel, 0, 1),
+    beat: clamp(state.audioBeat, 0, 1),
+    phase: state.audioMotionPhase,
+  };
 }
 
 function blendAngle(from, to, amount) {
@@ -698,8 +727,7 @@ function buildPattern() {
 
   createBlankZones();
   createCircleGuides(runtime);
-  const audioBoost = clamp(state.audioLevel * 0.8, 0, 0.2);
-  const count = Math.floor(7 + (densityValue + audioBoost) * 20);
+  const count = Math.floor(7 + densityValue * 20);
   const maxAttempts = count * 24;
   const collisionMap = new Map();
   const collisionCell = Math.max(10, state.lineThickness * 1.3);
@@ -1437,6 +1465,116 @@ function drawCrayonPaperTexture() {
   ctx.restore();
 }
 
+function pointOnPath(points, travel, progress = 1) {
+  if (points.length < 2 || progress <= 0) return null;
+  const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
+  const maxIndex = drawCount - 1;
+  let totalLength = 0;
+  for (let i = 1; i < drawCount; i += 1) totalLength += distance(points[i - 1], points[i]);
+  if (totalLength <= 0) return { x: points[0].x, y: points[0].y, angle: 0 };
+
+  let target = ((travel % 1) + 1) % 1 * totalLength;
+  for (let i = 1; i <= maxIndex; i += 1) {
+    const p0 = points[i - 1];
+    const p1 = points[i];
+    const length = distance(p0, p1);
+    if (target <= length || i === maxIndex) {
+      const t = length <= 0 ? 0 : target / length;
+      return {
+        x: p0.x + (p1.x - p0.x) * t,
+        y: p0.y + (p1.y - p0.y) * t,
+        angle: Math.atan2(p1.y - p0.y, p1.x - p0.x),
+      };
+    }
+    target -= length;
+  }
+  const last = points[maxIndex];
+  const prev = points[Math.max(0, maxIndex - 1)];
+  return { x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) };
+}
+
+function drawAudioTravellers() {
+  const motion = audioMotion();
+  if (!motion.active) return;
+  const segments = [];
+  forEachPathSegment((points, width, progress, phase) => {
+    if (points.length > 2 && progress > 0.05) segments.push({ points, width, progress, phase });
+  });
+  if (!segments.length) return;
+
+  const layer = createFxCanvas();
+  const lctx = layer.getContext("2d");
+  const travellerColor = state.fxBubbleGlowColor || state.strokeColor;
+  const coreColor = mixRgb(travellerColor, "#ffffff", 0.28 + motion.treble * 0.22);
+  const shadowColor = mixRgb(travellerColor, "#000000", 0.45);
+  const travellerCount = Math.min(18, Math.max(4, Math.floor(4 + motion.energy * 8 + motion.beat * 5)));
+
+  lctx.clearRect(0, 0, layer.width, layer.height);
+  lctx.lineCap = "round";
+  lctx.lineJoin = "round";
+  for (let i = 0; i < travellerCount; i += 1) {
+    const pick = Math.floor(stableNoise(i * 41.3 + state.seed * 0.00017) * segments.length) % segments.length;
+    const segment = segments[pick];
+    const offset = stableNoise(i * 17.71 + segment.phase * 3.1);
+    const direction = stableNoise(i * 9.91 + state.seed * 0.00023) > 0.5 ? 1 : -1;
+    const travelSpeed = 0.035 + state.speed * 1.65 + motion.bass * 0.12 + stableNoise(i * 5.37) * 0.035;
+    const travel = offset + direction * motion.phase * travelSpeed + motion.beat * (0.025 + i * 0.001);
+    const point = pointOnPath(segment.points, travel, segment.progress);
+    if (!point) continue;
+
+    const pulse = 0.75 + motion.bass * 1.8 + motion.beat * 2.4 + stableNoise(i * 3.19 + motion.phase) * 0.45;
+    const radius = Math.max(3, segment.width * (0.62 + pulse * 0.45));
+    const glowRadius = radius * (2.2 + motion.energy * 1.3 + motion.beat * 1.1);
+
+    lctx.globalCompositeOperation = "screen";
+    const glow = lctx.createRadialGradient(point.x, point.y, radius * 0.12, point.x, point.y, glowRadius);
+    glow.addColorStop(0, hexToRgba(travellerColor, 0.46 + motion.beat * 0.22));
+    glow.addColorStop(0.42, hexToRgba(travellerColor, 0.2 + motion.energy * 0.22));
+    glow.addColorStop(1, hexToRgba(travellerColor, 0));
+    lctx.fillStyle = glow;
+    lctx.beginPath();
+    lctx.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
+    lctx.fill();
+
+    for (let trail = 1; trail <= 5; trail += 1) {
+      const trailPoint = pointOnPath(segment.points, travel - direction * trail * (0.014 + motion.mid * 0.006), segment.progress);
+      if (!trailPoint) continue;
+      const alpha = (0.18 + motion.energy * 0.24) * (1 - trail / 6);
+      lctx.strokeStyle = hexToRgba(travellerColor, alpha);
+      lctx.lineWidth = Math.max(1.1, radius * (0.32 - trail * 0.03));
+      lctx.beginPath();
+      lctx.moveTo(point.x, point.y);
+      lctx.lineTo(trailPoint.x, trailPoint.y);
+      lctx.stroke();
+    }
+
+    const wobble = Math.sin(motion.phase * 2.4 + i) * radius * 0.18;
+    lctx.globalCompositeOperation = "source-over";
+    lctx.fillStyle = rgbToRgba(coreColor, 0.42 + motion.beat * 0.22);
+    lctx.beginPath();
+    lctx.ellipse(point.x, point.y, radius * (0.7 + motion.bass * 0.28), radius * (0.52 + motion.treble * 0.24), point.angle + wobble * 0.02, 0, Math.PI * 2);
+    lctx.fill();
+
+    lctx.strokeStyle = rgbToRgba(shadowColor, 0.22 + motion.energy * 0.22);
+    lctx.lineWidth = Math.max(0.7, radius * 0.14);
+    lctx.beginPath();
+    lctx.arc(point.x + Math.cos(point.angle + Math.PI * 0.7) * radius * 0.16, point.y + Math.sin(point.angle + Math.PI * 0.7) * radius * 0.16, radius * 0.64, 0, Math.PI * 2);
+    lctx.stroke();
+  }
+
+  const maskCanvas = createFxCanvas();
+  const mctx = maskCanvas.getContext("2d");
+  drawPathMask(mctx, 2.15 + motion.bass * 0.55, 1.5 + motion.beat * 5);
+  lctx.globalCompositeOperation = "destination-in";
+  lctx.drawImage(maskCanvas, 0, 0);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.68 + motion.energy * 0.24;
+  ctx.drawImage(layer, 0, 0);
+  ctx.restore();
+}
+
 function draw() {
   ctx.save();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1460,6 +1598,8 @@ function draw() {
   drawEmbossFx();
   drawHalftoneNoiseFx();
   drawCrayonPaperTexture();
+  drawAudioTravellers();
+
   drawLogoImage();
   ctx.restore();
 }
@@ -1468,14 +1608,23 @@ function tick(now) {
   const delta = Math.min(80, now - state.lastFrame);
   state.lastFrame = now;
   updateAudioLevel();
+  const audioActive = isAudioMotionActive();
+  const phaseSpeed = 0.00035 + clamp(state.speed, 0.002, 0.08) * 0.024;
+  state.audioMotionPhase += delta * phaseSpeed * (1 + state.audioLevel * 2.4 + state.audioBeat * 1.8);
 
   if (state.animate) {
     if (state.progress < 1) {
       state.progress = clamp(state.progress + state.speed * delta * (1 + state.audioLevel * 1.8), 0, 1);
+      draw();
     } else {
       state.hold += delta;
-      if (state.hold > state.visibleTime * 1000) buildPattern();
+      if (state.hold > state.visibleTime * 1000) {
+        buildPattern();
+      } else {
+        draw();
+      }
     }
+  } else if (audioActive) {
     draw();
   }
   requestAnimationFrame(tick);
@@ -1609,12 +1758,44 @@ function connectAudioElement(element) {
 }
 
 function updateAudioLevel() {
-  if (!analyser) return;
+  if (!analyser) {
+    state.audioLevel *= 0.9;
+    state.audioBassLevel *= 0.9;
+    state.audioMidLevel *= 0.9;
+    state.audioTrebleLevel *= 0.9;
+    state.audioBeat *= 0.88;
+    return;
+  }
   const data = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteFrequencyData(data);
-  let total = 0;
-  for (let i = 0; i < data.length; i += 1) total += data[i];
-  state.audioLevel = total / data.length / 255;
+
+  const averageRange = (startRatio, endRatio) => {
+    const start = Math.max(1, Math.floor(data.length * startRatio));
+    const end = Math.max(start + 1, Math.floor(data.length * endRatio));
+    let total = 0;
+    for (let i = start; i < end; i += 1) total += data[i];
+    return total / (end - start) / 255;
+  };
+  const smooth = (previous, next, attack = 0.38, release = 0.14) => previous + (next - previous) * (next > previous ? attack : release);
+
+  const rawBass = averageRange(0.004, 0.08);
+  const rawMid = averageRange(0.08, 0.36);
+  const rawTreble = averageRange(0.36, 0.92);
+  const rawEnergy = clamp(rawBass * 0.48 + rawMid * 0.34 + rawTreble * 0.18, 0, 1);
+  const previousEnergy = state.audioLevel;
+
+  state.audioBassLevel = smooth(state.audioBassLevel, rawBass, 0.48, 0.16);
+  state.audioMidLevel = smooth(state.audioMidLevel, rawMid, 0.36, 0.13);
+  state.audioTrebleLevel = smooth(state.audioTrebleLevel, rawTreble, 0.32, 0.12);
+  state.audioLevel = smooth(state.audioLevel, rawEnergy, 0.42, 0.15);
+  state.audioAverage = state.audioAverage * 0.985 + rawEnergy * 0.015;
+
+  const transient = Math.max(0, rawEnergy - previousEnergy);
+  const beatThreshold = Math.max(0.055, state.audioAverage * 1.32);
+  const beatHit = rawBass > beatThreshold && transient > 0.018;
+  const beatDecay = 0.875 + clamp(state.visibleTime, 0.2, 3) * 0.032;
+  state.audioBeat = beatHit ? Math.min(1, state.audioBeat + 0.72 + transient * 2.4) : state.audioBeat * Math.min(0.975, beatDecay);
+
   document.getElementById("audioLevel").textContent = state.audioLevel.toFixed(2);
 }
 
@@ -1643,9 +1824,6 @@ async function toggleDemoAudio() {
   demoPlaying = true;
   button.classList.add("playing");
   button.textContent = "Pause";
-  state.animate = true;
-  document.getElementById("animateToggle").checked = true;
-  document.getElementById("motionControls").classList.remove("closed");
 }
 
 async function handleAudioUpload(event) {
@@ -1671,9 +1849,6 @@ async function toggleUploadedAudio() {
   if (audioElement.paused) {
     audioElement.play();
     button.classList.add("playing");
-    state.animate = true;
-    document.getElementById("animateToggle").checked = true;
-    document.getElementById("motionControls").classList.remove("closed");
   } else {
     audioElement.pause();
     button.classList.remove("playing");
