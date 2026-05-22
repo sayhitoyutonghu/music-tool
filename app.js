@@ -2259,36 +2259,38 @@ function drawBubbleBlurFx() {
   lc.globalAlpha = 0.6 + amount * 0.25;  lc.drawImage(mid, 0, 0);   // mid falloff
   lc.globalAlpha = 0.9;                  lc.drawImage(rim, 0, 0);   // contour edge
 
-  // Grain dissolve: break the soft edge into organic stipple (like an image-trace
-  // stipple). Coverage-aware — solid areas stay dense, the soft edge scatters into
-  // dots — which reads as intentional grain instead of pixelated gradient banding.
+  // Fine film grain: subtly modulate the glow BRIGHTNESS with deterministic noise
+  // while leaving alpha (the silhouette/edge) untouched — so the outline stays
+  // clean & smooth and the grain reads as a film/print texture, not dotty edges.
   if (grain > 0.01) {
-    applyGrainDissolve(L, grain, state.seed >>> 0, Math.max(1, Math.round(scale * 1.6)));
+    applyFilmGrain(L, grain, state.seed >>> 0, Math.max(1, Math.round(scale)));
   }
 
   drawFxLayer(L, "screen", 1);
 }
 
-// In-place coverage-aware stipple: each pixel's alpha is compared against a
-// deterministic noise value; where noise exceeds coverage the pixel is dropped
-// (scaled by `amount`). Dense interior, scattered edge → organic grain dissolve.
-function applyGrainDissolve(layer, amount, seed, cell) {
+// In-place film grain on RGB only (alpha preserved → clean edges). Each pixel's
+// brightness is scaled by (1 ± grain·noise), giving a fine, even speckle texture.
+function applyFilmGrain(layer, amount, seed, cell) {
   const w = layer.width, h = layer.height;
   const lctx = layer.getContext("2d");
   const img = lctx.getImageData(0, 0, w, h);
   const d = img.data;
   const gs = Math.max(1, cell | 0);
   const s = (seed % 100000) * 0.0001;
+  const range = amount * 0.85; // max ± brightness swing
   for (let y = 0; y < h; y++) {
     const cy = (y / gs) | 0;
     for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4 + 3;
-      const a = d[i];
-      if (a === 0) continue;
+      const i = (y * w + x) * 4;
+      if (d[i + 3] === 0) continue;
       const cx = (x / gs) | 0;
       let n = Math.sin(cx * 127.1 + cy * 311.7 + s) * 43758.5453;
-      n = n - Math.floor(n);                 // 0..1 deterministic noise
-      if (n > a / 255) d[i] = Math.round(a * (1 - amount)); // drop toward 0
+      n = n - Math.floor(n);                 // 0..1
+      const f = 1 + (n - 0.5) * 2 * range;   // brightness factor
+      d[i]     = Math.max(0, Math.min(255, d[i] * f));
+      d[i + 1] = Math.max(0, Math.min(255, d[i + 1] * f));
+      d[i + 2] = Math.max(0, Math.min(255, d[i + 2] * f));
     }
   }
   lctx.putImageData(img, 0, 0);
