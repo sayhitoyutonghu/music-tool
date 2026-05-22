@@ -36,6 +36,9 @@ const state = {
   showGuides: false,
   textSeedValue: "",
   useTextSeed: true,
+  showTextReference: false,
+  textAsStroke: true,
+  textColor: "#ffffff",
   scriptStrokeInfluence: 0.78,
   crayonEffect: false,
   crayonStrength: 0.45,
@@ -1270,28 +1273,25 @@ function addPointsToMap(points, cellMap, cellSize) {
 // This produces a single flowing calligraphic ribbon of letter shapes that
 // wraps continuously around all four frame edges.
 
-function buildPatternFromFontContours() {
+// Shared geometry for the text-on-a-path frame. Both the pattern generator and
+// the reference overlay use this so they are guaranteed to stay aligned.
+function getFrameWarpConfig() {
   const text = state.textSeedValue.trim();
-  if (!text) return false;
+  if (!text) return null;
   const rawChars = [...text].filter((c) => c.trim()).join("");
-  if (!rawChars) return false;
+  if (!rawChars) return null;
 
   const W = state.canvasWidth;
   const H = state.canvasHeight;
   const minSide = Math.min(W, H);
 
   // Frame band: the ribbon around the canvas edges within which letters live.
-  // frameCx = distance from canvas edge to the frame ribbon centreline.
-  const bandDepth = minSide * 0.17;           // radial thickness of the ribbon
-  const frameCx   = minSide * 0.07 + bandDepth * 0.5; // centreline inset
-  const fontSize   = clamp(bandDepth * 0.90, 52, minSide * 0.24);
-  const strokeW    = Math.max(state.lineThickness * 0.7, 5);
+  const bandDepth = minSide * 0.17;                   // radial thickness of the ribbon
+  const frameCx = minSide * 0.07 + bandDepth * 0.5;   // centreline inset from edge
+  const fontSize = clamp(bandDepth * 0.90, 52, minSide * 0.24);
 
-  // ── Perimeter path ──────────────────────────────────────────────────────────
-  // For horizontal mirror we generate only the LEFT half (U-shape):
-  //   top-centre → top-left corner → down left side → bottom-left → bottom-centre
-  // For vertical mirror: top half (Ω-shape), for none: full rectangle.
-  // Each segment stores its inward normal (nx, ny) so we can offset radially.
+  // Perimeter segments (left half for horizontal mirror, top half for vertical,
+  // full rectangle for none). Each carries its inward normal (nx, ny).
   const segs = [];
   const fc = frameCx;
   if (state.mirrorMode === "horizontal") {
@@ -1312,8 +1312,6 @@ function buildPatternFromFontContours() {
   const cumLens = segLens.reduce((acc, l) => { acc.push((acc[acc.length - 1] || 0) + l); return acc; }, []);
   const totalLen = cumLens[cumLens.length - 1];
 
-  // Map arc-distance d and radial offset r → world (x, y).
-  // r > 0 = inward toward canvas centre; r < 0 = outward toward canvas edge.
   function perimToWorld(d, r) {
     d = clamp(d, 0, totalLen * 0.9999);
     let si = 0;
@@ -1327,21 +1325,38 @@ function buildPatternFromFontContours() {
     };
   }
 
-  // ── Render text into a strip as wide as the perimeter ───────────────────────
-  // Repeat the text as many times as needed to fill the perimeter length.
   const offH = Math.ceil(bandDepth * 1.25);
   const estCharW = fontSize * 0.58;
   const repeats = Math.max(1, Math.ceil(totalLen * 1.05 / (estCharW * rawChars.length)));
   const displayText = (rawChars + " ").repeat(repeats).trimEnd();
-
   const offW = Math.ceil(totalLen);
-  const off = document.createElement("canvas");
-  off.width = offW; off.height = offH;
-  const octx = off.getContext("2d");
-  octx.font = `${fontSize}px ${_patternFontFamily}`;
-  octx.fillStyle = "#fff";
-  octx.textBaseline = "middle";
-  octx.fillText(displayText, 2, offH / 2);
+
+  // Render the repeated text into a horizontal strip the width of the perimeter.
+  function renderStrip() {
+    const off = document.createElement("canvas");
+    off.width = offW; off.height = offH;
+    const octx = off.getContext("2d");
+    octx.font = `${fontSize}px ${_patternFontFamily}`;
+    octx.fillStyle = "#fff";
+    octx.textBaseline = "middle";
+    octx.fillText(displayText, 2, offH / 2);
+    return { canvas: off, ctx: octx };
+  }
+
+  return {
+    W, H, minSide, bandDepth, frameCx, fontSize,
+    segs, segLens, cumLens, totalLen, perimToWorld,
+    offW, offH, displayText, renderStrip,
+  };
+}
+
+function buildPatternFromFontContours() {
+  const cfg = getFrameWarpConfig();
+  if (!cfg) return false;
+  const { segs, segLens, cumLens, totalLen, perimToWorld, offW, offH, fontSize } = cfg;
+  const strokeW = Math.max(state.lineThickness * 0.7, 5);
+
+  const { ctx: octx } = cfg.renderStrip();
 
   // ── Edge-pixel extraction ────────────────────────────────────────────────────
   const raw = octx.getImageData(0, 0, offW, offH).data;
@@ -1397,15 +1412,16 @@ function buildPatternFromFontContours() {
     return best;
   }
 
-  const usedSet = new Set(), rawChains = [];
-  const maxGap = step * 2.7;
-  const minChainLen = Math.max(5, Math.round(fontSize * 0.12 / step));
+  const usedSet = new Set();
+  let rawChains = [];
+  const maxGap = step * 3.4;            // bridge bigger gaps while tracing
+  const minChainLen = Math.max(4, Math.round(fontSize * 0.08 / step));
 
   for (const seed of edgePts) {
     if (usedSet.has(seed)) continue;
     const chain = [seed]; usedSet.add(seed);
     let cur = seed, dX = 0, dY = 0;
-    for (let i = 0; i < 1500; i++) {
+    for (let i = 0; i < 2000; i++) {
       const next = nextAlong(cur.x, cur.y, dX, dY, maxGap, usedSet);
       if (!next) break;
       const ndx = next.x - cur.x, ndy = next.y - cur.y;
@@ -1415,12 +1431,47 @@ function buildPatternFromFontContours() {
       const dl = Math.hypot(dX, dY) || 1; dX /= dl; dY /= dl;
       chain.push(next); usedSet.add(next); cur = next;
     }
-    if (chain.length >= minChainLen) rawChains.push(chain);
+    if (chain.length >= 3) rawChains.push(chain);
   }
   if (!rawChains.length) return false;
 
+  // ── Stitch pass ──────────────────────────────────────────────────────────────
+  // Greedily join chains whose endpoints sit close together so the frame reads
+  // as long flowing strokes instead of many short fragments.
+  const maxStitch = step * 7;
+  function stitchChains(chains) {
+    const remaining = chains.slice();
+    const out = [];
+    while (remaining.length) {
+      let current = remaining.shift();
+      let extended = true;
+      while (extended) {
+        extended = false;
+        const tail = current[current.length - 1];
+        let bestIdx = -1, bestDist = maxStitch, bestReverse = false;
+        for (let i = 0; i < remaining.length; i++) {
+          const c = remaining[i];
+          const dStart = Math.hypot(c[0].x - tail.x, c[0].y - tail.y);
+          const dEnd = Math.hypot(c[c.length - 1].x - tail.x, c[c.length - 1].y - tail.y);
+          if (dStart < bestDist) { bestDist = dStart; bestIdx = i; bestReverse = false; }
+          if (dEnd < bestDist) { bestDist = dEnd; bestIdx = i; bestReverse = true; }
+        }
+        if (bestIdx >= 0) {
+          let c = remaining.splice(bestIdx, 1)[0];
+          if (bestReverse) c = c.slice().reverse();
+          current = current.concat(c);
+          extended = true;
+        }
+      }
+      out.push(current);
+    }
+    return out;
+  }
+  rawChains = stitchChains(rawChains).filter((c) => c.length >= minChainLen);
+  if (!rawChains.length) return false;
+
   // ── Smooth chains and warp to frame world coords ────────────────────────────
-  const smooth = (chain, win = 5) =>
+  const smooth = (chain, win = 8) =>
     chain.map((p, i) => {
       let sx = 0, sy = 0, cnt = 0;
       for (let j = Math.max(0, i - win); j <= Math.min(chain.length - 1, i + win); j++) {
@@ -1471,12 +1522,25 @@ function buildPattern() {
 
   createBlankZones();
 
-  // Font-contour frame mode: each letter becomes stroke paths along the frame edges.
-  if (state.useTextSeed && state.textSeedValue.trim() && buildPatternFromFontContours()) {
-    state.progress = state.animate ? 0 : 1;
-    state.hold = 0;
-    draw();
-    return;
+  // Text frame mode.
+  if (state.useTextSeed && state.textSeedValue.trim()) {
+    if (state.textAsStroke) {
+      // Clean mode: the visible frame is the warped glyph fill (drawTextFrame).
+      // We still generate the contour paths so the bubble/glass/edge/emboss FX
+      // have a mask to glow around — but the raw strokes themselves are not drawn.
+      buildPatternFromFontContours(); // populates state.paths (may stay empty)
+      state.progress = state.animate ? 0 : 1;
+      state.hold = 0;
+      draw();
+      return;
+    }
+    // Contour mode: trace each letter into stroke paths along the frame.
+    if (buildPatternFromFontContours()) {
+      state.progress = state.animate ? 0 : 1;
+      state.hold = 0;
+      draw();
+      return;
+    }
   }
 
   createCircleGuides(runtime);
@@ -2480,64 +2544,121 @@ function drawAudioTravellers() {
   drawFxLayer(rimLayer, "screen", 0.95);
 }
 
-function drawTypedTextLayer() {
-  if (!state.useTextSeed) return;
-  const text = state.textSeedValue.trim();
-  if (!text) return;
-
-  const W = state.canvasWidth;
-  const H = state.canvasHeight;
-  const scale = clamp(1050 / Math.max(W, H), 0.38, 1);
-  const layer = createFxCanvas(scale);
+// Warp the horizontal text strip onto a full-resolution layer following the
+// frame perimeter. On straight edges the warp is a rigid rotation+translation,
+// so one setTransform per segment reproduces it exactly. Returns a canvas
+// holding the warped white glyphs (base half only — caller mirrors).
+function warpStripToLayer(cfg) {
+  const { segs, segLens, cumLens, offH, renderStrip } = cfg;
+  const strip = renderStrip().canvas;
+  const layer = document.createElement("canvas");
+  layer.width = canvas.width;
+  layer.height = canvas.height;
   const lctx = layer.getContext("2d");
-  lctx.save();
-  lctx.scale(scale, scale);
+  const px = canvas.width / state.canvasWidth; // device-pixel scale (usually 1)
 
-  // Scale font to fit canvas width with comfortable margin
-  const maxW = W * 0.86;
-  let fontSize = clamp(H * 0.2, 36, H * 0.42);
-  const scriptFont = `"Snell Roundhand", "Apple Chancery", "Zapfino", Georgia, cursive`;
-  lctx.font = `400 ${fontSize}px ${scriptFont}`;
-  const measured = lctx.measureText(text).width;
-  if (measured > maxW) fontSize *= maxW / measured;
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i];
+    const segLen = segLens[i];
+    if (segLen < 1) continue;
+    const segStart = i > 0 ? cumLens[i - 1] : 0;
+    const tx = (seg.x1 - seg.x0) / segLen;  // unit tangent
+    const ty = (seg.y1 - seg.y0) / segLen;
+    const nx = seg.nx, ny = seg.ny;         // unit inward normal
+    lctx.save();
+    lctx.setTransform(
+      tx * px, ty * px,
+      nx * px, ny * px,
+      (seg.x0 - tx * segStart - nx * offH / 2) * px,
+      (seg.y0 - ty * segStart - ny * offH / 2) * px,
+    );
+    lctx.drawImage(strip, segStart, 0, segLen, offH, segStart, 0, segLen, offH);
+    lctx.restore();
+  }
+  lctx.setTransform(1, 0, 0, 1, 0, 0);
+  return layer;
+}
 
-  // Letter-by-letter reveal driven by progress
-  const visLen = Math.max(1, Math.ceil(text.length * clamp(state.progress, 0, 1)));
-  const displayText = text.slice(0, visLen);
+// Recolour the opaque pixels of a layer in place via source-in.
+function tintLayer(layer, color) {
+  const lctx = layer.getContext("2d");
+  lctx.globalCompositeOperation = "source-in";
+  lctx.fillStyle = color;
+  lctx.fillRect(0, 0, layer.width, layer.height);
+  lctx.globalCompositeOperation = "source-over";
+}
 
-  const cx = W / 2;
-  const cy = H / 2;
-  const color = state.strokeColor;
-  const base = clamp(state.strokeAlpha, 0.05, 1);
-  const ghostAlpha = state.animate ? clamp(1 - state.progress * 1.4, 0.08, 0.24) : 0.1;
+// Composite a base-half layer onto the main canvas, mirroring to match the frame.
+function compositeMirrored(layer, alpha, mode) {
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.globalCompositeOperation = mode;
+  ctx.drawImage(layer, 0, 0);
+  if (state.mirrorMode === "horizontal") {
+    ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    ctx.drawImage(layer, 0, 0);
+  } else if (state.mirrorMode === "vertical") {
+    ctx.translate(0, canvas.height); ctx.scale(1, -1);
+    ctx.drawImage(layer, 0, 0);
+  }
+  ctx.restore();
+}
 
-  lctx.textAlign = "center";
-  lctx.textBaseline = "middle";
+// Clean text frame: the warped decorative letters rendered directly as the frame
+// (no messy contour tracing), with a neon glow in the chosen colour.
+function drawTextFrame() {
+  if (!state.useTextSeed || !state.textAsStroke) return;
+  const cfg = getFrameWarpConfig();
+  if (!cfg) return;
 
-  // Outer soft halo
-  lctx.save();
-  lctx.filter = `blur(${(fontSize * 0.25).toFixed(1)}px)`;
-  lctx.font = `400 ${fontSize}px ${scriptFont}`;
-  lctx.fillStyle = colorToRgba(color, base * ghostAlpha * 0.42);
-  lctx.fillText(displayText, cx, cy);
-  lctx.restore();
+  const baseLayer = warpStripToLayer(cfg);   // white glyphs
+  const fs = cfg.fontSize;
 
-  // Mid glow
-  lctx.save();
-  lctx.filter = `blur(${(fontSize * 0.07).toFixed(1)}px)`;
-  lctx.font = `400 ${fontSize}px ${scriptFont}`;
-  lctx.fillStyle = colorToRgba(color, base * ghostAlpha * 0.62);
-  lctx.fillText(displayText, cx, cy);
-  lctx.restore();
+  // Colourise a copy of the glyphs.
+  const colored = document.createElement("canvas");
+  colored.width = canvas.width; colored.height = canvas.height;
+  const cc = colored.getContext("2d");
+  cc.drawImage(baseLayer, 0, 0);
+  cc.globalCompositeOperation = "source-in";
+  cc.fillStyle = state.textColor;
+  cc.fillRect(0, 0, colored.width, colored.height);
+  cc.globalCompositeOperation = "source-over";
 
-  // Crisp sharp layer
-  lctx.font = `400 ${fontSize}px ${scriptFont}`;
-  lctx.strokeStyle = colorToRgba(color, base * ghostAlpha);
-  lctx.lineWidth = Math.max(1, fontSize * 0.018);
-  lctx.strokeText(displayText, cx, cy);
+  // Bake glow + core into a single base-half frame layer.
+  const frame = document.createElement("canvas");
+  frame.width = canvas.width; frame.height = canvas.height;
+  const fctx = frame.getContext("2d");
+  fctx.globalCompositeOperation = "lighter";
+  fctx.globalAlpha = 0.4;
+  fctx.filter = `blur(${(fs * 0.3).toFixed(1)}px)`;
+  fctx.drawImage(colored, 0, 0);
+  fctx.globalAlpha = 0.7;
+  fctx.filter = `blur(${(fs * 0.09).toFixed(1)}px)`;
+  fctx.drawImage(colored, 0, 0);
+  fctx.filter = "none";
+  fctx.globalCompositeOperation = "source-over";
+  fctx.globalAlpha = 1;
+  fctx.drawImage(colored, 0, 0);
+  // Bright white core for the neon-tube highlight.
+  fctx.globalCompositeOperation = "lighter";
+  fctx.globalAlpha = 0.5;
+  fctx.filter = `blur(${(fs * 0.02 + 1).toFixed(1)}px)`;
+  fctx.drawImage(baseLayer, 0, 0);
+  fctx.filter = "none";
+  fctx.globalAlpha = 1;
 
-  lctx.restore();
-  drawFxLayer(layer, "source-over", 1.0);
+  compositeMirrored(frame, 1, "source-over");
+}
+
+// Hidable reference overlay: same warped letters tinted pink, so the user can
+// read the source text and see how it bends around the frame.
+function drawTextReference() {
+  if (!state.useTextSeed || !state.showTextReference) return;
+  const cfg = getFrameWarpConfig();
+  if (!cfg) return;
+  const layer = warpStripToLayer(cfg);
+  tintLayer(layer, "#ff5ea0");
+  compositeMirrored(layer, 0.55, "screen");
 }
 
 function draw() {
@@ -2553,12 +2674,18 @@ function draw() {
   drawGuideCircles();
   drawGlassPolishFx();
 
-  for (const path of state.paths) {
-    drawPath(path.points, path.width, state.progress, path.phase);
-    for (const branch of path.branches) {
-      drawPath(branch.points, branch.width, clamp(state.progress * 1.2 - 0.15, 0, 1), path.phase + 1.7);
+  // In text-as-stroke mode the visible frame is the clean glyph fill; the raw
+  // contour strokes are kept only as an FX mask source, so don't draw them here.
+  const textFrameMode = state.useTextSeed && state.textAsStroke && state.textSeedValue.trim();
+  if (!textFrameMode) {
+    for (const path of state.paths) {
+      drawPath(path.points, path.width, state.progress, path.phase);
+      for (const branch of path.branches) {
+        drawPath(branch.points, branch.width, clamp(state.progress * 1.2 - 0.15, 0, 1), path.phase + 1.7);
+      }
     }
   }
+  drawTextFrame();
   drawEdgeLightShadowFx();
   drawBubbleBlurFx();
   drawEmbossFx();
@@ -2566,6 +2693,7 @@ function draw() {
   drawCrayonPaperTexture();
   drawAudioTravellers();
 
+  drawTextReference();
   drawLogoImage();
   ctx.restore();
 }
@@ -3039,6 +3167,21 @@ function bindControls() {
     buildPattern();
   });
 
+  document.getElementById("textReferenceToggle").addEventListener("change", (event) => {
+    state.showTextReference = event.target.checked;
+    draw();
+  });
+
+  document.getElementById("textAsStrokeToggle").addEventListener("change", (event) => {
+    state.textAsStroke = event.target.checked;
+    buildPattern();
+  });
+
+  document.getElementById("textColorInput").addEventListener("input", (event) => {
+    state.textColor = event.target.value;
+    draw();
+  });
+
   document.getElementById("applyTextSeed").addEventListener("click", () => {
     buildPattern();
   });
@@ -3175,6 +3318,9 @@ document.getElementById("startFromBottomToggle").checked = state.startFromBottom
 document.getElementById("circleScaffoldToggle").checked = state.useCircleScaffold;
 document.getElementById("showGuidesToggle").checked = state.showGuides;
 document.getElementById("textSeedToggle").checked = state.useTextSeed;
+document.getElementById("textReferenceToggle").checked = state.showTextReference;
+document.getElementById("textAsStrokeToggle").checked = state.textAsStroke;
+document.getElementById("textColorInput").value = state.textColor;
 document.getElementById("textSeedInput").value = state.textSeedValue;
 state.crayonEffect = state.fxWaxTexture;
 state.crayonStrength = state.fxWaxStrength;

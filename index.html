@@ -193,9 +193,21 @@
             <input id="textSeedToggle" type="checkbox" checked />
             <span>Generate From Text</span>
           </label>
+          <label class="switch-row style-switch-row">
+            <input id="textAsStrokeToggle" type="checkbox" checked />
+            <span>Text as Stroke (clean)</span>
+          </label>
+          <label class="switch-row style-switch-row">
+            <input id="textReferenceToggle" type="checkbox" />
+            <span>Show Text Reference</span>
+          </label>
           <div class="field">
             <label>Name / Text</label>
             <input id="textSeedInput" type="text" class="text-seed-input" placeholder="Type a name..." />
+          </div>
+          <div class="field">
+            <label>Text Color</label>
+            <input id="textColorInput" type="color" value="#ffffff" />
           </div>
           <button id="applyTextSeed" class="tiny-button">Apply Text Pattern</button>
           <div id="textSeedMeta" class="file-meta">Text seed inactive</div>
