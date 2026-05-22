@@ -2057,25 +2057,31 @@ function drawGlassPolishFx() {
   const shine = clamp(state.fxGlassShine, 0, 1);
   if (opacity < 0.01 && shine < 0.01) return;
 
-  const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
+  if (!state.paths.length) return;
+  const minSide = Math.min(canvas.width, canvas.height);
+  // Higher-res buffers + blur-only masks → smooth, no pixelation.
+  const scale = Math.min(1, 2048 / Math.max(canvas.width, canvas.height));
   const bubbleAmount = clamp(state.fxBubbleStrength, 0, 1);
-  const bodyExpandPx = 24 + bubbleAmount * 34 + state.fxBubbleOutlinePx * 0.9;
-  const shellWidthScale = 1.14 + bubbleAmount * 0.2;
+  const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
+  const expandPx = minSide * (0.006 + bubbleAmount * 0.014);
+  const mergeR = minSide * (0.012 + bubbleAmount * 0.01) * scale; // fuse nearby blobs
   const glassColor = state.fxBubbleGlowColor || "#bfffd6";
   const lightColor = mixRgb(glassColor, "#ffffff", 0.48);
   const midColor = mixRgb(glassColor, "#ffffff", 0.14);
   const darkColor = mixRgb(glassColor, "#000000", 0.34);
 
-  const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, 7 + bubbleAmount * 10, scale);
-  const bodyMask = thresholdMask(softUnion, 10 + (1 - opacity) * 9);
-  const innerMask = erodeMask(bodyMask, Math.max(1, (5 + state.fxBubbleOutlinePx * 0.55) * scale));
-  const rimMask = subtractMask(bodyMask, innerMask);
+  const { S, inv } = buildBubbleSilhouette(scale, expandPx, mergeR);
 
+  // 1) Soft outer glow — gentle outward bloom (柔和的外发光).
+  const haloR = (minSide * (0.018 + shine * 0.03 + bubbleAmount * 0.02)) * scale;
+  const halo = blurMaskCopy(S, scale, haloR, "destination-out", S);
+  tintLayer(halo, lightColor);
+  drawFxLayer(halo, "screen", 0.28 + shine * 0.3);
+
+  // 2) Glass body fill — gradient clipped to the smooth (anti-aliased) silhouette.
   const glassLayer = createFxCanvas(scale);
-  glassLayer.width = bodyMask.width;
-  glassLayer.height = bodyMask.height;
   const glassCtx = glassLayer.getContext("2d");
-  glassCtx.drawImage(bodyMask, 0, 0);
+  glassCtx.drawImage(S, 0, 0);
   glassCtx.globalCompositeOperation = "source-in";
   const glassGradient = glassCtx.createLinearGradient(0, 0, glassLayer.width, glassLayer.height);
   glassGradient.addColorStop(0, colorToRgba(lightColor, 0.12 + opacity * 0.2));
@@ -2085,19 +2091,15 @@ function drawGlassPolishFx() {
   glassCtx.fillRect(0, 0, glassLayer.width, glassLayer.height);
   drawFxLayer(glassLayer, "source-over", 0.86);
 
+  // 3) Depth shading — radial gradient on a soft interior (fades near the edge).
+  const innerSoft = blurMaskCopy(S, scale, (minSide * 0.02) * scale, "destination-in", S);
   const depthLayer = createFxCanvas(scale);
-  depthLayer.width = bodyMask.width;
-  depthLayer.height = bodyMask.height;
   const depthCtx = depthLayer.getContext("2d");
-  depthCtx.drawImage(innerMask, 0, 0);
+  depthCtx.drawImage(innerSoft, 0, 0);
   depthCtx.globalCompositeOperation = "source-in";
   const depthGradient = depthCtx.createRadialGradient(
-    depthLayer.width * 0.42,
-    depthLayer.height * 0.25,
-    depthLayer.width * 0.05,
-    depthLayer.width * 0.6,
-    depthLayer.height * 0.72,
-    Math.max(depthLayer.width, depthLayer.height) * 0.66,
+    depthLayer.width * 0.42, depthLayer.height * 0.25, depthLayer.width * 0.05,
+    depthLayer.width * 0.6, depthLayer.height * 0.72, Math.max(depthLayer.width, depthLayer.height) * 0.66,
   );
   depthGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
   depthGradient.addColorStop(0.54, colorToRgba(darkColor, opacity * 0.04));
@@ -2106,37 +2108,11 @@ function drawGlassPolishFx() {
   depthCtx.fillRect(0, 0, depthLayer.width, depthLayer.height);
   drawFxLayer(depthLayer, "multiply", 0.58 + opacity * 0.18);
 
-  const pathGlowLayer = createFxCanvas(scale);
-  const pathGlowCtx = pathGlowLayer.getContext("2d");
-  pathGlowCtx.save();
-  pathGlowCtx.scale(scale, scale);
-  forEachPathSegment((points, width, progress) => {
-    strokePolyline(points, width, progress, glassColor, opacity * (0.08 + shine * 0.14), {
-      widthScale: 1.25 + shine * 0.36,
-      expandPx: bodyExpandPx * (0.08 + shine * 0.18),
-      blur: (8 + shine * 12) * scale,
-    }, pathGlowCtx);
-    strokePolyline(points, width, progress, "#ffffff", shine * (0.05 + opacity * 0.12), {
-      widthScale: 0.92 + shine * 0.22,
-      expandPx: bodyExpandPx * 0.04,
-      blur: (3 + shine * 5) * scale,
-      offsetX: -1.8 - shine * 1.2,
-      offsetY: -1.8 - shine * 1.2,
-    }, pathGlowCtx);
-  });
-  pathGlowCtx.restore();
-  pathGlowCtx.globalCompositeOperation = "destination-in";
-  pathGlowCtx.drawImage(bodyMask, 0, 0);
-  drawFxLayer(pathGlowLayer, "screen", 0.72 + shine * 0.2);
-
-  const rimLayer = tintedMaskLayer(rimMask, "#ffffff", 0.18 + shine * 0.26);
-  const rimCtx = rimLayer.getContext("2d");
-  rimCtx.save();
-  rimCtx.globalCompositeOperation = "screen";
-  rimCtx.filter = `blur(${Math.max(0.8, (1.3 + shine * 1.8) * scale).toFixed(2)}px)`;
-  rimCtx.drawImage(tintedMaskLayer(rimMask, "#ffffff", 0.2 + shine * 0.22), 0, 0);
-  rimCtx.restore();
-  drawFxLayer(rimLayer, "screen", 0.68 + shine * 0.18);
+  // 4) Defined outline — smooth bright edge band straddling the contour (有outline).
+  const rimR = (minSide * 0.005 + outlinePx * 1.2) * scale;
+  const rim = edgeBandMask(S, inv, scale, rimR);
+  tintLayer(rim, "#ffffff");
+  drawFxLayer(rim, "screen", 0.6 + shine * 0.3);
 }
 
 function drawEdgeLightShadowFx() {
@@ -2175,81 +2151,110 @@ function drawEdgeLightShadowFx() {
   ctx.restore();
 }
 
+// ── Smooth blur-only mask helpers (no thresholding → no pixelation) ───────────
+function blurMaskCopy(src, scale, radius, keepOp, keepImg) {
+  const c = createFxCanvas(scale);
+  const cx = c.getContext("2d");
+  cx.filter = `blur(${Math.max(0, radius).toFixed(2)}px)`;
+  cx.drawImage(src, 0, 0);
+  cx.filter = "none";
+  if (keepOp) { cx.globalCompositeOperation = keepOp; cx.drawImage(keepImg, 0, 0); }
+  return c;
+}
+
+// A soft glowing band straddling the silhouette contour: outer spill + inner falloff.
+function edgeBandMask(S, inv, scale, radius) {
+  const outer = blurMaskCopy(S, scale, radius, "destination-out", S);
+  const inner = blurMaskCopy(inv, scale, radius, "destination-in", S);
+  const c = createFxCanvas(scale);
+  const cx = c.getContext("2d");
+  cx.drawImage(outer, 0, 0);
+  cx.globalCompositeOperation = "lighter";
+  cx.drawImage(inner, 0, 0);
+  return c;
+}
+
+// White anti-aliased silhouette of the pattern (merged into blobs) and its inverse.
+// `mergeR` (scaled px) closes thin necks between nearby blobs metaball-style:
+// blur spreads the field, then re-stacking re-densifies it so adjacent shapes
+// fuse smoothly — all anti-aliased, so no pixelation.
+function buildBubbleSilhouette(scale, expandPx, mergeR = 0) {
+  const raw = createFxCanvas(scale);
+  const rctx = raw.getContext("2d");
+  rctx.save();
+  rctx.scale(scale, scale);
+  paintPathMask(rctx, 1, expandPx);
+  rctx.restore();
+
+  let S = raw;
+  if (mergeR > 0.5) {
+    S = createFxCanvas(scale);
+    const sctx = S.getContext("2d");
+    // Blur to spread, then stack draws so the soft field builds back to near-opaque
+    // (1−(1−a)^n) — bridges thin gaps while keeping soft, anti-aliased edges.
+    sctx.filter = `blur(${mergeR.toFixed(2)}px)`;
+    for (let i = 0; i < 6; i++) sctx.drawImage(raw, 0, 0);
+    sctx.filter = "none";
+    sctx.drawImage(raw, 0, 0); // crisp solid core on top
+  }
+
+  const inv = createFxCanvas(scale);
+  const ictx = inv.getContext("2d");
+  ictx.fillStyle = "#fff";
+  ictx.fillRect(0, 0, inv.width, inv.height);
+  ictx.globalCompositeOperation = "destination-out";
+  ictx.drawImage(S, 0, 0);
+  return { S, inv };
+}
+
+// Bubble / Blur — soft glow that DIFFUSES INWARD from the outline (like the
+// reference): brightest right at the contour, fading smoothly toward a dark
+// interior. Built entirely from Gaussian blur, so it's super smooth, no pixels.
 function drawBubbleBlurFx() {
   if (!state.fxBubbleBlur) return;
   const amount = clamp(state.fxBubbleStrength, 0, 1);
-  if (amount < 0.01) return;
+  if (amount < 0.01 || !state.paths.length) return;
 
   const density = clamp(state.fxBubbleBlurDensity, 0, 1);
-  const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
-  const bodyExpandPx = 22 + amount * 26;
-  const mergeBlurPx = 4 + amount * 8;
   const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
-  const shellWidthScale = 1.08 + amount * 0.22;
-  const blurColor = state.fxBubbleGlowColor;
-  const patternBlurVisibility = density * clamp(state.strokeAlpha, 0, 1);
+  const minSide = Math.min(canvas.width, canvas.height);
+  // Higher-resolution working buffers → crisper, refined (non-pixelated) edges.
+  const scale = Math.min(1, 2048 / Math.max(canvas.width, canvas.height));
+  const expandPx = minSide * (0.006 + amount * 0.016);   // body fatten/merge
+  const mergeR = minSide * (0.012 + amount * 0.01) * scale; // fuse nearby blobs
+  const glowColor = state.fxBubbleGlowColor || "#ffffff";
 
-  const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, mergeBlurPx, scale);
-  const bodyMask = thresholdMask(softUnion, 18 + amount * 14);
-  const innerBodyMask = erodeMask(bodyMask, outlinePx * scale);
-  const hardOuterEdgeMask = subtractMask(bodyMask, innerBodyMask);
+  const { S, inv } = buildBubbleSilhouette(scale, expandPx, mergeR);
 
-  const outerGlowMask = drawExpandedPathMask(shellWidthScale, bodyExpandPx + 10 + amount * 8, 8 + amount * 16, scale);
-  const outsideGlowMask = subtractMask(outerGlowMask, bodyMask);
-  drawFxLayer(tintedMaskLayer(outsideGlowMask, "#ffffff", 0.22 + amount * 0.42), "screen", 0.78);
+  // Inward-diffusion layers, all = blur(inverse) clipped INSIDE the shape, so each
+  // is bright at the contour and fades toward the interior. Deeper radius = the
+  // glow reaches further in (density pushes it deeper, toward a filled look).
+  const deepR = (minSide * (0.03 + amount * 0.05) + density * minSide * 0.05) * scale;
+  const midR  = (minSide * (0.012 + amount * 0.02)) * scale;
+  const edgeR = (minSide * 0.006 + outlinePx * 1.2) * scale;
+  const deep = blurMaskCopy(inv, scale, deepR, "destination-in", S);
+  const mid  = blurMaskCopy(inv, scale, midR, "destination-in", S);
+  const rim  = blurMaskCopy(inv, scale, edgeR, "destination-in", S);
+  tintLayer(deep, glowColor);
+  tintLayer(mid, glowColor);
+  tintLayer(rim, glowColor);
 
-  const innerGlowLayer = createFxCanvas(scale);
-  const innerGlowCtx = innerGlowLayer.getContext("2d");
-  if (patternBlurVisibility > 0.001) {
-    innerGlowCtx.save();
-    innerGlowCtx.scale(scale, scale);
-    forEachPathSegment((points, width, progress) => {
-      strokePolyline(points, width, progress, blurColor, patternBlurVisibility * (0.35 + amount * 0.36), {
-        widthScale: 1.06 + amount * 0.2,
-        expandPx: bodyExpandPx * (0.1 + density * 0.3 + amount * 0.08),
-        blur: (8 + amount * 12 + density * 10) * scale,
-      }, innerGlowCtx);
-      strokePolyline(points, width, progress, blurColor, patternBlurVisibility * (0.28 + amount * 0.28), {
-        widthScale: 1 + amount * 0.1,
-        expandPx: bodyExpandPx * (0.03 + density * 0.12),
-        blur: (2.5 + amount * 4.5 + density * 5) * scale,
-      }, innerGlowCtx);
-      strokePolyline(points, width, progress, "#ffffff", patternBlurVisibility * (0.08 + amount * 0.12), {
-        widthScale: 1.05 + amount * 0.16,
-        expandPx: bodyExpandPx * (0.04 + density * 0.12),
-        blur: (7 + amount * 9 + density * 8) * scale,
-      }, innerGlowCtx);
-    });
-    innerGlowCtx.restore();
-    innerGlowCtx.save();
-    innerGlowCtx.globalCompositeOperation = "destination-in";
-    innerGlowCtx.drawImage(innerBodyMask, 0, 0);
-    innerGlowCtx.restore();
-    drawFxLayer(innerGlowLayer, "source-over", 0.42 + density * 0.58);
+  // A small soft outer feather so the silhouette boundary isn't a hard cut.
+  const outerR = (minSide * 0.005 + outlinePx * 0.6) * scale;
+  const outer = blurMaskCopy(S, scale, outerR, "destination-out", S);
+  tintLayer(outer, glowColor);
 
-    const shadowMask = drawExpandedPathMask(shellWidthScale, Math.max(2, bodyExpandPx - outlinePx * 0.8), 5 + amount * 6, scale);
-    drawFxLayer(tintedMaskLayer(shadowMask, "#000000", patternBlurVisibility * (0.04 + amount * 0.1)), "multiply", 0.45 + density * 0.22);
-  }
-
-  const inwardOutlineLayer = tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.12 + amount * 0.12);
-  const inwardOutlineCtx = inwardOutlineLayer.getContext("2d");
-  inwardOutlineCtx.save();
-  inwardOutlineCtx.globalCompositeOperation = "source-over";
-  inwardOutlineCtx.filter = `blur(${((1.8 + amount * 3.3) * scale).toFixed(2)}px)`;
-  inwardOutlineCtx.drawImage(tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.18 + amount * 0.18), 0, 0);
-  inwardOutlineCtx.globalCompositeOperation = "destination-in";
-  inwardOutlineCtx.drawImage(innerBodyMask, 0, 0);
-  inwardOutlineCtx.restore();
-  drawFxLayer(inwardOutlineLayer, "screen", 0.5 + amount * 0.18);
-
-  const hardEdgeLayer = tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.92);
-  const hardEdgeCtx = hardEdgeLayer.getContext("2d");
-  hardEdgeCtx.save();
-  hardEdgeCtx.globalCompositeOperation = "screen";
-  hardEdgeCtx.filter = `blur(${Math.max(0.7, 1.3 * scale).toFixed(2)}px)`;
-  hardEdgeCtx.drawImage(tintedMaskLayer(hardOuterEdgeMask, "#ffffff", 0.65), 0, 0);
-  hardEdgeCtx.restore();
-  drawFxLayer(hardEdgeLayer, "source-over", 1);
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = 0.3 + amount * 0.22;     // subtle outer feather
+  ctx.drawImage(outer, 0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 0.45 + amount * 0.3;     // deep inward diffusion
+  ctx.drawImage(deep, 0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 0.6 + amount * 0.25;     // mid inward falloff
+  ctx.drawImage(mid, 0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 0.9;                      // bright contour edge
+  ctx.drawImage(rim, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
 }
 
 function drawEmbossFx() {
