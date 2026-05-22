@@ -50,6 +50,7 @@ const state = {
   fxBubbleStrength: 0.04,
   fxBubbleBlurDensity: 1,
   fxBubbleOutlinePx: 1,
+  fxBubbleGrain: 0,
   fxBubbleGlowColor: "#8f8796",
   fxGlassPolish: true,
   fxGlassOpacity: 0.42,
@@ -2059,8 +2060,10 @@ function drawGlassPolishFx() {
 
   if (!state.paths.length) return;
   const minSide = Math.min(canvas.width, canvas.height);
-  // Higher-res buffers + blur-only masks → smooth, no pixelation.
-  const scale = Math.min(1, 2048 / Math.max(canvas.width, canvas.height));
+  // Work buffer at full canvas res (supersampled for smaller canvases), capped at
+  // 4096px for memory. Never below 1 visually unless the canvas exceeds 4096, so
+  // the mask is not upscaled → no pixelation.
+  const scale = Math.min(1.6, 4096 / Math.max(canvas.width, canvas.height));
   const bubbleAmount = clamp(state.fxBubbleStrength, 0, 1);
   const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
   const expandPx = minSide * (0.006 + bubbleAmount * 0.014);
@@ -2218,8 +2221,8 @@ function drawBubbleBlurFx() {
   const density = clamp(state.fxBubbleBlurDensity, 0, 1);
   const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
   const minSide = Math.min(canvas.width, canvas.height);
-  // Higher-resolution working buffers → crisper, refined (non-pixelated) edges.
-  const scale = Math.min(1, 2048 / Math.max(canvas.width, canvas.height));
+  // Work buffer at full canvas res (supersampled when small), capped at 4096px.
+  const scale = Math.min(1.6, 4096 / Math.max(canvas.width, canvas.height));
   const expandPx = minSide * (0.006 + amount * 0.016);   // body fatten/merge
   const mergeR = minSide * (0.012 + amount * 0.01) * scale; // fuse nearby blobs
   const glowColor = state.fxBubbleGlowColor || "#ffffff";
@@ -2244,17 +2247,51 @@ function drawBubbleBlurFx() {
   const outer = blurMaskCopy(S, scale, outerR, "destination-out", S);
   tintLayer(outer, glowColor);
 
-  ctx.save();
-  ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.3 + amount * 0.22;     // subtle outer feather
-  ctx.drawImage(outer, 0, 0, canvas.width, canvas.height);
-  ctx.globalAlpha = 0.45 + amount * 0.3;     // deep inward diffusion
-  ctx.drawImage(deep, 0, 0, canvas.width, canvas.height);
-  ctx.globalAlpha = 0.6 + amount * 0.25;     // mid inward falloff
-  ctx.drawImage(mid, 0, 0, canvas.width, canvas.height);
-  ctx.globalAlpha = 0.9;                      // bright contour edge
-  ctx.drawImage(rim, 0, 0, canvas.width, canvas.height);
-  ctx.restore();
+  const grain = clamp(state.fxBubbleGrain, 0, 1);
+
+  // Assemble the glow into one layer so an optional grain dissolve can be applied
+  // to the whole bubble at once.
+  const L = createFxCanvas(scale);
+  const lc = L.getContext("2d");
+  lc.globalCompositeOperation = "screen";
+  lc.globalAlpha = 0.3 + amount * 0.22;  lc.drawImage(outer, 0, 0); // outer feather
+  lc.globalAlpha = 0.45 + amount * 0.3;  lc.drawImage(deep, 0, 0);  // deep diffusion
+  lc.globalAlpha = 0.6 + amount * 0.25;  lc.drawImage(mid, 0, 0);   // mid falloff
+  lc.globalAlpha = 0.9;                  lc.drawImage(rim, 0, 0);   // contour edge
+
+  // Grain dissolve: break the soft edge into organic stipple (like an image-trace
+  // stipple). Coverage-aware — solid areas stay dense, the soft edge scatters into
+  // dots — which reads as intentional grain instead of pixelated gradient banding.
+  if (grain > 0.01) {
+    applyGrainDissolve(L, grain, state.seed >>> 0, Math.max(1, Math.round(scale * 1.6)));
+  }
+
+  drawFxLayer(L, "screen", 1);
+}
+
+// In-place coverage-aware stipple: each pixel's alpha is compared against a
+// deterministic noise value; where noise exceeds coverage the pixel is dropped
+// (scaled by `amount`). Dense interior, scattered edge → organic grain dissolve.
+function applyGrainDissolve(layer, amount, seed, cell) {
+  const w = layer.width, h = layer.height;
+  const lctx = layer.getContext("2d");
+  const img = lctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const gs = Math.max(1, cell | 0);
+  const s = (seed % 100000) * 0.0001;
+  for (let y = 0; y < h; y++) {
+    const cy = (y / gs) | 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4 + 3;
+      const a = d[i];
+      if (a === 0) continue;
+      const cx = (x / gs) | 0;
+      let n = Math.sin(cx * 127.1 + cy * 311.7 + s) * 43758.5453;
+      n = n - Math.floor(n);                 // 0..1 deterministic noise
+      if (n > a / 255) d[i] = Math.round(a * (1 - amount)); // drop toward 0
+    }
+  }
+  lctx.putImageData(img, 0, 0);
 }
 
 function drawEmbossFx() {
