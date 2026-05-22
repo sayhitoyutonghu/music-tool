@@ -36,6 +36,7 @@ const state = {
   showGuides: false,
   textSeedValue: "",
   useTextSeed: true,
+  scriptStrokeInfluence: 0.78,
   crayonEffect: false,
   crayonStrength: 0.45,
   fxWaxTexture: true,
@@ -97,6 +98,19 @@ let demoPlaying = false;
 let backgroundImageUrl;
 let logoImageUrl;
 let halftoneNoiseCache = { key: "", canvas: null };
+
+// Decorative font for text-pattern mode — loaded async, falls back to Georgia
+let _patternFontFamily = 'Georgia, "Times New Roman", serif';
+(function preloadPatternFont() {
+  if (typeof FontFace === "undefined") return;
+  try {
+    const ff = new FontFace("Superfluous01", "url('/assets/Superfluous01.woff2')");
+    ff.load().then((loaded) => {
+      document.fonts.add(loaded);
+      _patternFontFamily = "Superfluous01, Georgia, serif";
+    }).catch(() => {});
+  } catch (e) {}
+})();
 
 const colorModes = {
   black: { bg: "#f8f8f6", bgAlpha: 1, stroke: "#050505", strokeAlpha: 1, outline: false },
@@ -821,6 +835,287 @@ function createCurlPath(signX, signY, options = {}) {
   };
 }
 
+function getActiveTextGlyphs() {
+  const text = state.useTextSeed ? state.textSeedValue.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+  return text ? Array.from(text) : ["u", "n", "t", "r", "a", "s", "l", "g", "y"];
+}
+
+function glyphStrokeFamily(glyph) {
+  if ("ygjpq9".includes(glyph)) return "descender";
+  if ("bdfhklt".includes(glyph)) return "ascender";
+  if ("aceog068".includes(glyph)) return "round";
+  if ("mnruw".includes(glyph)) return "hump";
+  if ("svxz25".includes(glyph)) return "sweep";
+  return "connector";
+}
+
+function cubicPoint(p0, c1, c2, p1, t) {
+  const mt = 1 - t;
+  return {
+    x: mt ** 3 * p0.x + 3 * mt ** 2 * t * c1.x + 3 * mt * t ** 2 * c2.x + t ** 3 * p1.x,
+    y: mt ** 3 * p0.y + 3 * mt ** 2 * t * c1.y + 3 * mt * t ** 2 * c2.y + t ** 3 * p1.y,
+  };
+}
+
+function appendCubicLocal(points, p0, c1, c2, p1, steps = 16) {
+  if (!points.length) points.push({ ...p0 });
+  for (let i = 1; i <= steps; i += 1) {
+    points.push(cubicPoint(p0, c1, c2, p1, i / steps));
+  }
+}
+
+function appendArcLocal(points, cx, cy, rx, ry, startAngle, endAngle, steps = 28) {
+  for (let i = 0; i <= steps; i += 1) {
+    if (points.length && i === 0) continue;
+    const t = i / steps;
+    const a = startAngle + (endAngle - startAngle) * t;
+    points.push({ x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+  }
+}
+
+function localBounds(points) {
+  return points.reduce((bounds, p) => ({
+    minX: Math.min(bounds.minX, p.x),
+    maxX: Math.max(bounds.maxX, p.x),
+    minY: Math.min(bounds.minY, p.y),
+    maxY: Math.max(bounds.maxY, p.y),
+  }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+}
+
+function createScriptLocalStroke(glyph) {
+  const points = [];
+  const family = glyphStrokeFamily(glyph);
+
+  if (family === "descender") {
+    appendCubicLocal(points, { x: 0.02, y: 0.08 }, { x: 0.12, y: -0.18 }, { x: 0.42, y: -0.24 }, { x: 0.56, y: -0.03 }, 14);
+    appendArcLocal(points, 0.38, 0.02, 0.23, 0.26, -0.18 * Math.PI, 1.72 * Math.PI, 34);
+    const last = points[points.length - 1];
+    appendCubicLocal(points, last, { x: 0.72, y: 0.18 }, { x: 0.62, y: 0.66 }, { x: 0.44, y: 0.78 }, 18);
+    appendArcLocal(points, 0.51, 0.78, 0.18, 0.17, 0.95 * Math.PI, -0.95 * Math.PI, 26);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.66, y: 1.02 }, { x: 0.86, y: 0.63 }, { x: 1.02, y: 0.5 }, 14);
+  } else if (family === "ascender") {
+    appendCubicLocal(points, { x: 0.06, y: 0.42 }, { x: 0.02, y: -0.5 }, { x: 0.48, y: -0.72 }, { x: 0.54, y: -0.28 }, 20);
+    appendArcLocal(points, 0.42, -0.35, 0.17, 0.32, -0.18 * Math.PI, 1.35 * Math.PI, 28);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.48, y: 0.15 }, { x: 0.58, y: 0.58 }, { x: 0.24, y: 0.72 }, 18);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.46, y: 0.56 }, { x: 0.74, y: 0.48 }, { x: 0.98, y: 0.26 }, 12);
+  } else if (family === "round") {
+    appendCubicLocal(points, { x: 0.0, y: 0.08 }, { x: 0.18, y: -0.18 }, { x: 0.58, y: -0.22 }, { x: 0.72, y: 0.04 }, 12);
+    appendArcLocal(points, 0.45, 0.08, 0.28, 0.32, -0.08 * Math.PI, 1.86 * Math.PI, 42);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.68, y: 0.42 }, { x: 0.88, y: 0.32 }, { x: 1.0, y: 0.12 }, 12);
+  } else if (family === "hump") {
+    appendCubicLocal(points, { x: 0.0, y: 0.26 }, { x: 0.16, y: -0.08 }, { x: 0.28, y: -0.18 }, { x: 0.4, y: 0.16 }, 14);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.5, y: 0.44 }, { x: 0.68, y: -0.18 }, { x: 0.82, y: 0.12 }, 16);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.9, y: 0.36 }, { x: 1.04, y: 0.26 }, { x: 1.12, y: 0.02 }, 10);
+  } else if (family === "sweep") {
+    appendCubicLocal(points, { x: 0.02, y: -0.08 }, { x: 0.28, y: -0.38 }, { x: 0.74, y: -0.22 }, { x: 0.64, y: 0.1 }, 18);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.56, y: 0.42 }, { x: 0.18, y: 0.26 }, { x: 0.24, y: 0.58 }, 16);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.32, y: 0.82 }, { x: 0.72, y: 0.72 }, { x: 1.02, y: 0.42 }, 14);
+  } else {
+    appendCubicLocal(points, { x: 0.0, y: 0.1 }, { x: 0.16, y: -0.12 }, { x: 0.34, y: 0.28 }, { x: 0.5, y: 0.04 }, 14);
+    appendArcLocal(points, 0.58, 0.1, 0.16, 0.22, Math.PI, 2.45 * Math.PI, 24);
+    appendCubicLocal(points, points[points.length - 1], { x: 0.72, y: -0.04 }, { x: 0.9, y: 0.18 }, { x: 1.04, y: 0.0 }, 12);
+  }
+
+  return points;
+}
+
+function glyphReadableWidth(glyph) {
+  const family = glyphStrokeFamily(glyph);
+  if ("ilt1".includes(glyph)) return 0.58;
+  if ("mw".includes(glyph)) return 1.22;
+  if (family === "descender") return 1.02;
+  if (family === "ascender") return 0.92;
+  if (family === "hump") return 1.1;
+  return 0.96;
+}
+
+function createScriptWordLocalStroke(glyphs) {
+  const points = [];
+  let cursor = 0;
+
+  glyphs.forEach((glyph, index) => {
+    const local = createScriptLocalStroke(glyph);
+    if (local.length < 3) return;
+
+    const bounds = localBounds(local);
+    const localW = Math.max(0.001, bounds.maxX - bounds.minX);
+    const targetW = glyphReadableWidth(glyph);
+    const family = glyphStrokeFamily(glyph);
+    const baselineShift = family === "descender" ? 0.06 : family === "ascender" ? -0.04 : 0;
+    const shaped = local.map((point) => ({
+      x: cursor + ((point.x - bounds.minX) / localW) * targetW,
+      y: point.y + baselineShift,
+    }));
+
+    if (points.length && shaped.length) {
+      const last = points[points.length - 1];
+      const first = shaped[0];
+      appendCubicLocal(
+        points,
+        last,
+        { x: last.x + targetW * 0.18, y: last.y - 0.05 },
+        { x: first.x - targetW * 0.2, y: first.y + 0.04 },
+        first,
+        8,
+      );
+      points.push(...shaped.slice(1));
+    } else {
+      points.push(...shaped);
+    }
+
+    const overlap = index < glyphs.length - 1 ? rand(0.68, 0.82) : 1;
+    cursor += targetW * overlap;
+  });
+
+  return points;
+}
+
+function chooseScriptGlyphSequence(glyphs, zone, forceReadable, influence) {
+  if (!glyphs.length) return ["u"];
+  if (forceReadable && glyphs.length > 1) return glyphs.slice(0, Math.min(glyphs.length, 14));
+
+  const canWriteWord = glyphs.length > 2 && (zone === "bottom" || zone === "top");
+  if (canWriteWord && chance(0.34 + influence * 0.42)) {
+    const maxLen = Math.min(glyphs.length, 7);
+    const len = Math.floor(rand(3, maxLen + 1));
+    const start = Math.floor(rand(0, Math.max(1, glyphs.length - len + 1)));
+    return glyphs.slice(start, start + len);
+  }
+
+  return [glyphs[Math.floor(rand(0, glyphs.length))]];
+}
+
+function createCalligraphicStrokePath(signX, signY, options = {}) {
+  if (!state.useTextSeed || !state.textSeedValue.trim()) return null;
+  const influence = clamp(state.scriptStrokeInfluence, 0, 1);
+  if (influence < 0.03) return null;
+
+  const glyphs = getActiveTextGlyphs();
+  const minSide = Math.min(state.canvasWidth, state.canvasHeight);
+  const margin = getPatternSafeMarginPx();
+  const rect = getTextRect(minSide * 0.055);
+  const safeTop = margin;
+  const safeBottom = state.canvasHeight - margin;
+  const sideInner = signX < 0 ? rect.x - minSide * 0.045 : rect.x + rect.w + minSide * 0.045;
+  const sideOuter = signX < 0 ? margin : state.canvasWidth - margin;
+  const availableSide = Math.max(minSide * 0.12, Math.abs(sideInner - sideOuter));
+  const zoneRoll = rand();
+  const forceReadable = Boolean(options.forceReadable);
+  const zone = forceReadable
+    ? (options.forceZone || (state.startFromBottom ? "bottom" : "top"))
+    : state.startFromBottom
+    ? (zoneRoll < 0.42 ? "bottom" : zoneRoll < 0.86 ? "side" : "top")
+    : (zoneRoll < 0.52 ? "side" : zoneRoll < 0.78 ? "top" : "bottom");
+  const sequence = chooseScriptGlyphSequence(glyphs, zone, forceReadable, influence);
+  const isWord = sequence.length > 1;
+  const local = isWord ? createScriptWordLocalStroke(sequence) : createScriptLocalStroke(sequence[0]);
+  if (local.length < 8) return null;
+
+  const family = glyphStrokeFamily(sequence[0]);
+  const containsAscender = sequence.some((glyph) => glyphStrokeFamily(glyph) === "ascender");
+  const containsDescender = sequence.some((glyph) => glyphStrokeFamily(glyph) === "descender");
+  const size = rand(minSide * 0.12, minSide * (0.18 + influence * 0.1));
+  let drawW = size * rand(0.82, family === "hump" ? 1.52 : 1.28);
+  let drawH = size * rand(family === "ascender" || family === "descender" ? 1.15 : 0.72, 1.72);
+
+  if (isWord) {
+    const readableWidth = forceReadable
+      ? Math.min(state.canvasWidth - margin * 2.4, minSide * (0.44 + sequence.length * 0.035))
+      : minSide * rand(0.24 + sequence.length * 0.028, 0.34 + sequence.length * 0.042);
+    drawW = readableWidth;
+    drawH = minSide * rand(
+      containsAscender || containsDescender ? 0.12 : 0.095,
+      containsAscender || containsDescender ? 0.19 : 0.15,
+    );
+  }
+
+  let anchorX;
+  let anchorY;
+  let angle;
+
+  if (forceReadable && (zone === "bottom" || zone === "top")) {
+    anchorX = state.canvasWidth / 2 + rand(-minSide * 0.035, minSide * 0.035);
+    anchorY = zone === "bottom"
+      ? rand(safeBottom - drawH * 0.9, safeBottom - drawH * 0.42)
+      : rand(safeTop + drawH * 0.42, safeTop + drawH * 0.9);
+    angle = rand(-0.055, 0.055);
+  } else if (zone === "bottom") {
+    const minX = signX < 0
+      ? margin + drawW * 0.35
+      : Math.max(sideInner, margin + drawW * 0.35);
+    const maxX = signX < 0
+      ? Math.min(sideInner, state.canvasWidth - margin - drawW * 0.35)
+      : state.canvasWidth - margin - drawW * 0.35;
+    anchorX = rand(Math.min(minX, maxX), Math.max(minX, maxX));
+    anchorY = rand(safeBottom - minSide * 0.16, safeBottom - drawH * 0.15);
+    angle = (signX < 0 ? 0 : Math.PI) + rand(-0.18, 0.18);
+  } else if (zone === "top") {
+    const minX = signX < 0
+      ? margin + drawW * 0.35
+      : Math.max(sideInner, margin + drawW * 0.35);
+    const maxX = signX < 0
+      ? Math.min(sideInner, state.canvasWidth - margin - drawW * 0.35)
+      : state.canvasWidth - margin - drawW * 0.35;
+    anchorX = rand(Math.min(minX, maxX), Math.max(minX, maxX));
+    anchorY = rand(safeTop + drawH * 0.2, safeTop + minSide * 0.14);
+    angle = (signX < 0 ? 0 : Math.PI) + rand(-0.12, 0.12);
+  } else {
+    const sideWidth = Math.min(availableSide, minSide * 0.2);
+    anchorX = signX < 0
+      ? rand(margin + drawH * 0.25, margin + sideWidth)
+      : rand(state.canvasWidth - margin - sideWidth, state.canvasWidth - margin - drawH * 0.25);
+    anchorY = rand(safeTop + drawW * 0.32, safeBottom - drawW * 0.32);
+    angle = (signX < 0 ? -Math.PI / 2 : Math.PI / 2) + rand(-0.22, 0.22);
+  }
+
+  const bounds = localBounds(local);
+  const localW = Math.max(0.001, bounds.maxX - bounds.minX);
+  const localH = Math.max(0.001, bounds.maxY - bounds.minY);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const slant = rand(-0.14, 0.24) + (family === "descender" ? 0.08 : 0);
+  const smoothness = clamp(options.curveSmoothness ?? state.curveSmoothness, 0, 1);
+  const pad = minSide * 0.014;
+  let blockedCount = 0;
+
+  const transformed = local.map((point, index) => {
+    let lx = ((point.x - bounds.minX) / localW - 0.5) * drawW;
+    const ly = ((point.y - bounds.minY) / localH - 0.5) * drawH;
+    lx += ly * slant;
+    const jitter = (1 - smoothness) * minSide * 0.004;
+    const jx = (stableNoise(index * 1.77 + state.seed * 0.00011) - 0.5) * jitter;
+    const jy = (stableNoise(index * 2.13 + state.seed * 0.00017) - 0.5) * jitter;
+    const next = {
+      x: anchorX + lx * cos - ly * sin + jx,
+      y: anchorY + lx * sin + ly * cos + jy,
+    };
+    next.x = clamp(next.x, margin, state.canvasWidth - margin);
+    next.y = clamp(next.y, margin, state.canvasHeight - margin);
+    if (pointBlocked(next.x, next.y, pad)) {
+      blockedCount += 1;
+      pushAwayFromCenter(next, minSide * (0.035 + influence * 0.035));
+      next.x = clamp(next.x, margin, state.canvasWidth - margin);
+      next.y = clamp(next.y, margin, state.canvasHeight - margin);
+    }
+    return next;
+  });
+
+  if (blockedCount > transformed.length * 0.48) return null;
+  const smoothed = smoothPolyline(transformed, Math.round(2 + smoothness * 4), 0.52 + smoothness * 0.32);
+  const points = simplifyBlockedSegments(smoothed);
+  if (points.length < 9) return null;
+
+  return {
+    type: "script",
+    glyph: sequence.join(""),
+    noMirror: forceReadable,
+    points,
+    width: rand(0.62, 1.12) * state.lineThickness * (0.82 + influence * 0.28),
+    phase: rand(0, Math.PI * 2),
+    branches: [],
+  };
+}
+
 function smoothPolyline(points, passes = 2, pull = 0.75) {
   if (points.length < 3) return points;
   let current = points.map((p) => ({ ...p }));
@@ -848,7 +1143,7 @@ function simplifyBlockedSegments(points) {
 }
 
 function decoratePath(path, options = {}) {
-  if (path.points.length < 8 || path.type === "straight") return;
+  if (path.points.length < 8 || path.type === "straight" || path.type === "script") return;
   const flourishLevel = clamp(options.flourishes ?? state.flourishes, 0, 1);
   const branchCount = Math.floor(rand(0, 2.4) * flourishLevel);
   for (let i = 0; i < branchCount; i += 1) {
@@ -962,6 +1257,197 @@ function addPointsToMap(points, cellMap, cellSize) {
   }
 }
 
+// ── Font-contour frame pattern ──────────────────────────────────────────────
+// Renders each input character with the decorative font, extracts its pixel
+// contours as stroke chains, and places them along the four frame edges.
+// Mirror mode is applied exactly as organic paths are mirrored.
+
+// ── Text-on-a-path frame warp ────────────────────────────────────────────────
+// Renders the input text as a continuous horizontal strip at large font size,
+// extracts pixel contours as stroke chains, then warps each chain point so that
+// its x-coordinate maps to arc-distance along the frame perimeter and its
+// y-coordinate maps to radial depth (inward from the frame edge).
+// This produces a single flowing calligraphic ribbon of letter shapes that
+// wraps continuously around all four frame edges.
+
+function buildPatternFromFontContours() {
+  const text = state.textSeedValue.trim();
+  if (!text) return false;
+  const rawChars = [...text].filter((c) => c.trim()).join("");
+  if (!rawChars) return false;
+
+  const W = state.canvasWidth;
+  const H = state.canvasHeight;
+  const minSide = Math.min(W, H);
+
+  // Frame band: the ribbon around the canvas edges within which letters live.
+  // frameCx = distance from canvas edge to the frame ribbon centreline.
+  const bandDepth = minSide * 0.17;           // radial thickness of the ribbon
+  const frameCx   = minSide * 0.07 + bandDepth * 0.5; // centreline inset
+  const fontSize   = clamp(bandDepth * 0.90, 52, minSide * 0.24);
+  const strokeW    = Math.max(state.lineThickness * 0.7, 5);
+
+  // ── Perimeter path ──────────────────────────────────────────────────────────
+  // For horizontal mirror we generate only the LEFT half (U-shape):
+  //   top-centre → top-left corner → down left side → bottom-left → bottom-centre
+  // For vertical mirror: top half (Ω-shape), for none: full rectangle.
+  // Each segment stores its inward normal (nx, ny) so we can offset radially.
+  const segs = [];
+  const fc = frameCx;
+  if (state.mirrorMode === "horizontal") {
+    segs.push({ x0: W/2, y0: fc,   x1: fc,   y1: fc,   nx:  0, ny:  1 }); // top (→left)
+    segs.push({ x0: fc,  y0: fc,   x1: fc,   y1: H-fc, nx:  1, ny:  0 }); // left side
+    segs.push({ x0: fc,  y0: H-fc, x1: W/2,  y1: H-fc, nx:  0, ny: -1 }); // bottom (→right)
+  } else if (state.mirrorMode === "vertical") {
+    segs.push({ x0: fc,   y0: H/2, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (→top)
+    segs.push({ x0: fc,   y0: fc,  x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
+    segs.push({ x0: W-fc, y0: fc,  x1: W-fc, y1: H/2,  nx: -1, ny:  0 }); // right (→bottom)
+  } else {
+    segs.push({ x0: fc,   y0: fc,   x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
+    segs.push({ x0: W-fc, y0: fc,   x1: W-fc, y1: H-fc, nx: -1, ny:  0 }); // right
+    segs.push({ x0: W-fc, y0: H-fc, x1: fc,   y1: H-fc, nx:  0, ny: -1 }); // bottom
+    segs.push({ x0: fc,   y0: H-fc, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left
+  }
+  const segLens = segs.map((s) => Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
+  const cumLens = segLens.reduce((acc, l) => { acc.push((acc[acc.length - 1] || 0) + l); return acc; }, []);
+  const totalLen = cumLens[cumLens.length - 1];
+
+  // Map arc-distance d and radial offset r → world (x, y).
+  // r > 0 = inward toward canvas centre; r < 0 = outward toward canvas edge.
+  function perimToWorld(d, r) {
+    d = clamp(d, 0, totalLen * 0.9999);
+    let si = 0;
+    while (si < segs.length - 1 && cumLens[si] < d) si++;
+    const seg = segs[si];
+    const segStart = si > 0 ? cumLens[si - 1] : 0;
+    const t = segLens[si] > 0 ? (d - segStart) / segLens[si] : 0;
+    return {
+      x: seg.x0 + (seg.x1 - seg.x0) * t + seg.nx * r,
+      y: seg.y0 + (seg.y1 - seg.y0) * t + seg.ny * r,
+    };
+  }
+
+  // ── Render text into a strip as wide as the perimeter ───────────────────────
+  // Repeat the text as many times as needed to fill the perimeter length.
+  const offH = Math.ceil(bandDepth * 1.25);
+  const estCharW = fontSize * 0.58;
+  const repeats = Math.max(1, Math.ceil(totalLen * 1.05 / (estCharW * rawChars.length)));
+  const displayText = (rawChars + " ").repeat(repeats).trimEnd();
+
+  const offW = Math.ceil(totalLen);
+  const off = document.createElement("canvas");
+  off.width = offW; off.height = offH;
+  const octx = off.getContext("2d");
+  octx.font = `${fontSize}px ${_patternFontFamily}`;
+  octx.fillStyle = "#fff";
+  octx.textBaseline = "middle";
+  octx.fillText(displayText, 2, offH / 2);
+
+  // ── Edge-pixel extraction ────────────────────────────────────────────────────
+  const raw = octx.getImageData(0, 0, offW, offH).data;
+  const filled = (x, y) => x >= 0 && x < offW && y >= 0 && y < offH && raw[(y * offW + x) * 4] > 64;
+  const isEdge = (x, y) =>
+    filled(x, y) && (!filled(x - 1, y) || !filled(x + 1, y) || !filled(x, y - 1) || !filled(x, y + 1));
+
+  const step = Math.max(2, Math.round(fontSize / 34));
+  const edgePts = [], edgeSet = new Set();
+  for (let y = 1; y < offH - 1; y++) {
+    for (let x = 1; x < offW - 1; x++) {
+      if (!isEdge(x, y)) continue;
+      const sx = Math.round(x / step) * step;
+      const sy = Math.round(y / step) * step;
+      const key = sy * offW + sx;
+      if (!edgeSet.has(key)) { edgeSet.add(key); edgePts.push({ x: sx, y: sy }); }
+    }
+  }
+  if (edgePts.length < 8) return false;
+
+  // ── Direction-biased contour chaining ───────────────────────────────────────
+  const cellSize = step * 3;
+  const grid = new Map();
+  for (const p of edgePts) {
+    const gk = `${Math.floor(p.x / cellSize)},${Math.floor(p.y / cellSize)}`;
+    if (!grid.has(gk)) grid.set(gk, []);
+    grid.get(gk).push(p);
+  }
+
+  function nextAlong(cx, cy, dX, dY, maxDist, usedSet) {
+    const gx = Math.floor(cx / cellSize), gy = Math.floor(cy / cellSize);
+    let best = null, bestScore = Infinity;
+    const hasDir = dX !== 0 || dY !== 0;
+    for (let dgx = -2; dgx <= 2; dgx++) {
+      for (let dgy = -2; dgy <= 2; dgy++) {
+        const cell = grid.get(`${gx + dgx},${gy + dgy}`);
+        if (!cell) continue;
+        for (const p of cell) {
+          if (usedSet.has(p)) continue;
+          const dx = p.x - cx, dy = p.y - cy;
+          const d = Math.hypot(dx, dy);
+          if (d >= maxDist || d < 0.5) continue;
+          let score = d;
+          if (hasDir) {
+            const dot = (dx / d) * dX + (dy / d) * dY;
+            if (dot < -0.2) continue;
+            score += (1 - dot) * d * 1.8;
+          }
+          if (score < bestScore) { bestScore = score; best = p; }
+        }
+      }
+    }
+    return best;
+  }
+
+  const usedSet = new Set(), rawChains = [];
+  const maxGap = step * 2.7;
+  const minChainLen = Math.max(5, Math.round(fontSize * 0.12 / step));
+
+  for (const seed of edgePts) {
+    if (usedSet.has(seed)) continue;
+    const chain = [seed]; usedSet.add(seed);
+    let cur = seed, dX = 0, dY = 0;
+    for (let i = 0; i < 1500; i++) {
+      const next = nextAlong(cur.x, cur.y, dX, dY, maxGap, usedSet);
+      if (!next) break;
+      const ndx = next.x - cur.x, ndy = next.y - cur.y;
+      const nd = Math.hypot(ndx, ndy) || 1;
+      dX = dX * 0.55 + (ndx / nd) * 0.45;
+      dY = dY * 0.55 + (ndy / nd) * 0.45;
+      const dl = Math.hypot(dX, dY) || 1; dX /= dl; dY /= dl;
+      chain.push(next); usedSet.add(next); cur = next;
+    }
+    if (chain.length >= minChainLen) rawChains.push(chain);
+  }
+  if (!rawChains.length) return false;
+
+  // ── Smooth chains and warp to frame world coords ────────────────────────────
+  const smooth = (chain, win = 5) =>
+    chain.map((p, i) => {
+      let sx = 0, sy = 0, cnt = 0;
+      for (let j = Math.max(0, i - win); j <= Math.min(chain.length - 1, i + win); j++) {
+        sx += chain[j].x; sy += chain[j].y; cnt++;
+      }
+      return { x: sx / cnt, y: sy / cnt };
+    });
+
+  const allPaths = [];
+  for (const chain of rawChains) {
+    const pts = smooth(chain).map((p) => {
+      // p.x = horizontal position in text strip → arc distance along frame perimeter
+      // p.y = vertical position in strip → radial offset (above/below centreline)
+      const r = p.y - offH / 2; // + = inward (toward canvas centre), − = outward
+      return perimToWorld(p.x, r);
+    });
+    const pathObj = { points: pts, width: strokeW, phase: rand(0, Math.PI * 2), branches: [] };
+    allPaths.push(pathObj);
+    if (state.mirrorMode === "horizontal") allPaths.push(mirrorPath(pathObj, true, false));
+    else if (state.mirrorMode === "vertical") allPaths.push(mirrorPath(pathObj, false, true));
+  }
+
+  if (!allPaths.length) return false;
+  state.paths = allPaths;
+  return true;
+}
+
 function buildPattern() {
   const factors = state.useTextSeed ? textSeedFactors(state.textSeedValue) : textSeedFactors("");
   state.seed = state.useTextSeed && factors.active ? factors.seed : Date.now() >>> 0;
@@ -973,6 +1459,8 @@ function buildPattern() {
   const smoothnessValue = clamp(state.curveSmoothness + factors.smoothness, 0, 1);
   const circleDensityValue = clamp(state.circleGuideDensity + factors.guideDensity, 0.1, 1);
   const circleInfluenceValue = clamp(state.circleGuideInfluence + factors.guideInfluence, 0, 1);
+  const textActive = state.useTextSeed && factors.active;
+  const scriptInfluence = textActive ? clamp(state.scriptStrokeInfluence, 0, 1) : 0;
   const runtime = {
     straightLines: straightValue,
     flourishes: flourishesValue,
@@ -982,6 +1470,15 @@ function buildPattern() {
   };
 
   createBlankZones();
+
+  // Font-contour frame mode: each letter becomes stroke paths along the frame edges.
+  if (state.useTextSeed && state.textSeedValue.trim() && buildPatternFromFontContours()) {
+    state.progress = state.animate ? 0 : 1;
+    state.hold = 0;
+    draw();
+    return;
+  }
+
   createCircleGuides(runtime);
   const count = Math.floor(7 + densityValue * 20);
   const maxAttempts = count * 24;
@@ -989,13 +1486,17 @@ function buildPattern() {
   const collisionCell = Math.max(10, state.lineThickness * 1.3);
   const minDistance = Math.max(clamp(state.noOverlapGap, 4, 80), state.lineThickness * 1.45);
   const basePaths = [];
+  const scriptQuota = textActive ? Math.floor(count * (0.28 + scriptInfluence * 0.5)) : 0;
   let attempts = 0;
 
   while (basePaths.length < count && attempts < maxAttempts) {
     attempts += 1;
-    const seedSignX = state.mirrorMode === "vertical" ? (chance(0.5) ? -1 : 1) : -1;
+    const seedSignX = state.mirrorMode === "horizontal" ? -1 : (chance(0.5) ? -1 : 1);
     let path = null;
-    if (state.useCircleScaffold && chance(0.68 + circleInfluenceValue * 0.28)) {
+    if (textActive && basePaths.length < scriptQuota && chance(0.58 + scriptInfluence * 0.36)) {
+      path = createCalligraphicStrokePath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
+    }
+    if (!path && state.useCircleScaffold && chance(0.68 + circleInfluenceValue * 0.28)) {
       path = createCircleScaffoldPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
     }
     if (!path) path = createCurlPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
@@ -1977,6 +2478,66 @@ function drawAudioTravellers() {
   drawFxLayer(glowLayer, "screen", 0.82);
   drawFxLayer(liquidLayer, "source-over", 0.7 + motion.energy * 0.22);
   drawFxLayer(rimLayer, "screen", 0.95);
+}
+
+function drawTypedTextLayer() {
+  if (!state.useTextSeed) return;
+  const text = state.textSeedValue.trim();
+  if (!text) return;
+
+  const W = state.canvasWidth;
+  const H = state.canvasHeight;
+  const scale = clamp(1050 / Math.max(W, H), 0.38, 1);
+  const layer = createFxCanvas(scale);
+  const lctx = layer.getContext("2d");
+  lctx.save();
+  lctx.scale(scale, scale);
+
+  // Scale font to fit canvas width with comfortable margin
+  const maxW = W * 0.86;
+  let fontSize = clamp(H * 0.2, 36, H * 0.42);
+  const scriptFont = `"Snell Roundhand", "Apple Chancery", "Zapfino", Georgia, cursive`;
+  lctx.font = `400 ${fontSize}px ${scriptFont}`;
+  const measured = lctx.measureText(text).width;
+  if (measured > maxW) fontSize *= maxW / measured;
+
+  // Letter-by-letter reveal driven by progress
+  const visLen = Math.max(1, Math.ceil(text.length * clamp(state.progress, 0, 1)));
+  const displayText = text.slice(0, visLen);
+
+  const cx = W / 2;
+  const cy = H / 2;
+  const color = state.strokeColor;
+  const base = clamp(state.strokeAlpha, 0.05, 1);
+  const ghostAlpha = state.animate ? clamp(1 - state.progress * 1.4, 0.08, 0.24) : 0.1;
+
+  lctx.textAlign = "center";
+  lctx.textBaseline = "middle";
+
+  // Outer soft halo
+  lctx.save();
+  lctx.filter = `blur(${(fontSize * 0.25).toFixed(1)}px)`;
+  lctx.font = `400 ${fontSize}px ${scriptFont}`;
+  lctx.fillStyle = colorToRgba(color, base * ghostAlpha * 0.42);
+  lctx.fillText(displayText, cx, cy);
+  lctx.restore();
+
+  // Mid glow
+  lctx.save();
+  lctx.filter = `blur(${(fontSize * 0.07).toFixed(1)}px)`;
+  lctx.font = `400 ${fontSize}px ${scriptFont}`;
+  lctx.fillStyle = colorToRgba(color, base * ghostAlpha * 0.62);
+  lctx.fillText(displayText, cx, cy);
+  lctx.restore();
+
+  // Crisp sharp layer
+  lctx.font = `400 ${fontSize}px ${scriptFont}`;
+  lctx.strokeStyle = colorToRgba(color, base * ghostAlpha);
+  lctx.lineWidth = Math.max(1, fontSize * 0.018);
+  lctx.strokeText(displayText, cx, cy);
+
+  lctx.restore();
+  drawFxLayer(layer, "source-over", 1.0);
 }
 
 function draw() {
