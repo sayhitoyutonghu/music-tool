@@ -39,6 +39,11 @@ const state = {
   glowOpacity: 0.5,
   innerGlow: 0.24,
 
+  // Expanded bg aura — wide soft halo sitting behind the text
+  expandRadius: 45,
+  expandOpacity: 0.4,
+  expandColor: "#b9a0ff",
+
   // Frame
   showFrame: true,
   frameThickness: 12,
@@ -54,7 +59,7 @@ const state = {
   // Style
   fgColor: "#e8e4c0",        // shape body / ink outline color
   innerColor: "#ffffff",      // inner highlight color (bright center glow)
-  innerTightness: 0.65,       // how tight the highlight is (higher = narrower center glow)
+  innerTightness: 0.78,       // how tight the highlight is (higher = narrower center glow)
   bgColor: "#5c5a32",
   bgOpacity: 1,
   grain: 0.12,
@@ -100,6 +105,8 @@ function syncInputs() {
     logoCornerSizeValue: state.logoCornerSize,
     grainValue: state.grain.toFixed(2), bgOpacityValue: state.bgOpacity.toFixed(2),
     innerTightnessValue: state.innerTightness.toFixed(2),
+    expandRadiusValue: state.expandRadius,
+    expandOpacityValue: state.expandOpacity.toFixed(2),
   };
   for (const [id, val] of Object.entries(m)) { const el = document.getElementById(id); if (el) el.textContent = val; }
 }
@@ -544,14 +551,20 @@ function draw() {
   const fillR = Math.round(bodyColor.r * 0.25 + hlColor.r * 0.75);
   const fillG = Math.round(bodyColor.g * 0.25 + hlColor.g * 0.75);
   const fillB = Math.round(bodyColor.b * 0.25 + hlColor.b * 0.75);
-  const hlThreshold = Math.round(128 + 127 * state.innerTightness); // ~211 for 0.65
-  const fillThreshold = Math.round(128 + (hlThreshold - 128) * 0.65); // ~182 (much narrower)
+  const fillThreshold = Math.round(128 + 54 * state.innerTightness); // fill from light blur
   const innerFill = alphaHighCut(gooeyBlurred, fillThreshold, fillR, fillG, fillB);
   const innerFillSoft = blurCanvas(innerFill, Math.max(1, state.gooeyBlur * 0.15));
 
-  // Layer 3 — CENTER HIGHLIGHT (narrowest): bright white, very thin center spine
-  const highlightCore = alphaHighCut(gooeyBlurred, hlThreshold, hlColor.r, hlColor.g, hlColor.b);
-  const highlightFinal = blurCanvas(highlightCore, Math.max(2, state.gooeyBlur * 0.5));
+  // Layer 3 — CENTER HIGHLIGHT (narrowest): bright white, thin spine down the
+  // MIDDLE of each stroke. Extracted from a heavily-blurred source so even wide
+  // strokes / the frame band collapse to a single peaked centerline (instead of
+  // a flat plateau that would light up the whole edge).
+  const spineBlur = blurCanvas(rawAll, Math.max(state.gooeyBlur * 2.5, 14));
+  // Heavier blur lowers peak alpha, so use a gentler threshold (90–170) keyed to
+  // tightness; higher tightness = narrower centered spine.
+  const hlThreshold = Math.round(90 + 80 * state.innerTightness);
+  const highlightCore = alphaHighCut(spineBlur, hlThreshold, hlColor.r, hlColor.g, hlColor.b);
+  const highlightFinal = blurCanvas(highlightCore, Math.max(1, state.gooeyBlur * 0.28));
 
   /* ── C. Composite onto main canvas ── */
 
@@ -559,7 +572,20 @@ function draw() {
   if (state.backgroundImage) { drawImageCover(state.backgroundImage); }
   else { ctx.fillStyle = hexToRgba(state.bgColor, state.bgOpacity); ctx.fillRect(0, 0, W, H); }
 
-  // 2. Outer glow (soft halo behind everything)
+  // 2. Expanded bg aura (wide soft colored halo, sits behind the glow)
+  if (state.expandRadius > 0 && state.expandOpacity > 0) {
+    const ec = hexToRgb(state.expandColor);
+    const auraShape = alphaContrast(gooeyBlurred, state.gooeyContrast, ec.r, ec.g, ec.b);
+    const aura = document.createElement("canvas");
+    aura.width = W; aura.height = H;
+    const ax = aura.getContext("2d");
+    ax.filter = `blur(${state.expandRadius}px)`;
+    ax.globalAlpha = state.expandOpacity;
+    ax.drawImage(auraShape, 0, 0);
+    ctx.drawImage(aura, 0, 0);
+  }
+
+  // 3. Outer glow (soft halo behind everything)
   if (state.glowRadius > 0 && state.glowOpacity > 0) {
     const gc = document.createElement("canvas");
     gc.width = W; gc.height = H;
@@ -631,7 +657,7 @@ function clearBg() {
 /* ── Controls ────────────────────────────────────────────────── */
 
 function bindControls() {
-  const intKeys = new Set(["fontSize","letterSpacing","textYOffset","maxWidthPct","gooeyContrast","glowRadius","framePadding","frameRoundness","blobCount","blobSize","dripLength","canvasWidth","canvasHeight","frameWaviness","logoCornerSize"]);
+  const intKeys = new Set(["fontSize","letterSpacing","textYOffset","maxWidthPct","gooeyContrast","glowRadius","framePadding","frameRoundness","blobCount","blobSize","dripLength","canvasWidth","canvasHeight","frameWaviness","logoCornerSize","expandRadius"]);
 
   [...sliders, ...numberInputs].forEach(el => {
     const key = el.dataset.key;
@@ -653,6 +679,7 @@ function bindControls() {
   document.getElementById("frameBlobsToggle").addEventListener("change", e => { state.showFrameBlobs = e.target.checked; draw(); });
   document.getElementById("fgColorInput").addEventListener("input", e => { state.fgColor = e.target.value; draw(); });
   document.getElementById("innerColorInput").addEventListener("input", e => { state.innerColor = e.target.value; draw(); });
+  document.getElementById("expandColorInput").addEventListener("input", e => { state.expandColor = e.target.value; draw(); });
   document.getElementById("bgColorInput").addEventListener("input", e => { state.bgColor = e.target.value; draw(); });
   document.getElementById("bgOpacityInput").addEventListener("input", e => {
     state.bgOpacity = parseFloat(e.target.value);
@@ -705,6 +732,7 @@ document.getElementById("frameToggle").checked = state.showFrame;
 document.getElementById("frameBlobsToggle").checked = state.showFrameBlobs;
 document.getElementById("fgColorInput").value = state.fgColor;
 document.getElementById("innerColorInput").value = state.innerColor;
+document.getElementById("expandColorInput").value = state.expandColor;
 document.getElementById("bgColorInput").value = state.bgColor;
 document.getElementById("bgOpacityInput").value = state.bgOpacity;
 document.getElementById("titleInput").value = state.title;
