@@ -6,6 +6,7 @@ const marker = document.getElementById("textAreaMarker");
 const state = {
   canvasWidth: 1400,
   canvasHeight: 1400,
+<<<<<<< Updated upstream
   textAreaW: 42,
   textAreaH: 54,
   density: 0.55,
@@ -13,6 +14,60 @@ const state = {
   flourishes: 0.86,
   blankAreas: 0.16,
   lineThickness: 14,
+=======
+  canvasPadding: DEFAULT_CANVAS_PADDING,
+  textAreaW: 38,
+  textAreaH: 56,
+  logoX: 50,
+  logoY: 22,
+  logoW: 26,
+  logoH: 18,
+  logoOpacity: 1,
+  density: 0.28,
+  straightLines: 0.2,
+  flourishes: 0.42,
+  blankAreas: 0.08,
+  lineThickness: 8,
+  widthVariation: 0.42,
+  taperStrength: 0.58,
+  curveSmoothness: 0.7,
+  circleGuideDensity: 0.52,
+  circleGuideInfluence: 0.68,
+  circleMinRadius: 2.4,
+  circleMaxRadius: 9.5,
+  noOverlapGap: 18,
+  mirrorMode: "horizontal",
+  startFromBottom: true,
+  useCircleScaffold: true,
+  showGuides: false,
+  textSeedValue: "untranslated",
+  subtitleValue: "",
+  textStartOffset: 0,
+  useTextSeed: true,
+  showTextReference: false,
+  textAsStroke: true,
+  textColor: "#ffffff",
+  scriptStrokeInfluence: 0.78,
+  crayonEffect: false,
+  crayonStrength: 0.45,
+  fxWaxTexture: true,
+  fxWaxStrength: 0.52,
+  fxEdgeLightShadow: true,
+  fxEdgeStrength: 0.48,
+  fxBubbleBlur: true,
+  fxBubbleStrength: 0.04,
+  fxBubbleBlurDensity: 1,
+  fxBubbleOutlinePx: 1,
+  fxBubbleGrain: 0,
+  fxBubbleGlowColor: "#8f8796",
+  fxGlassPolish: true,
+  fxGlassOpacity: 0.42,
+  fxGlassShine: 0.58,
+  fxEmbossDepth: false,
+  fxEmbossStrength: 0.34,
+  fxHalftoneNoise: false,
+  fxHalftoneMix: 0.38,
+>>>>>>> Stashed changes
   visibleTime: 1.3,
   speed: 0.012,
   blurStroke: true,
@@ -390,6 +445,7 @@ function createTendril(anchor, tangent, side, scale) {
   let angle = tangent + direction * rand(0.75, 1.35) + Math.cos(outward) * 0.18;
   const steps = Math.floor(rand(20, 42));
 
+<<<<<<< Updated upstream
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
     angle += direction * (0.08 + t * 0.18);
@@ -397,6 +453,217 @@ function createTendril(anchor, tangent, side, scale) {
     x += Math.cos(angle) * step;
     y += Math.sin(angle) * step;
     if (!pointInTextRect(x, y, scale * 0.5)) points.push({ x, y });
+=======
+  // Frame band: the ribbon around the canvas edges within which letters live.
+  const bandDepth = minSide * 0.21;                   // radial thickness (bigger frame)
+  const offH = Math.ceil(bandDepth * 1.25);
+  // Centreline must be at least offH/2 from the canvas edge so the outer half
+  // of the text ribbon never gets clipped on ANY canvas size.
+  const frameCx = Math.max(
+    minSide * 0.02 + getPatternSafeMarginPx() + bandDepth * 0.31,
+    offH / 2 + 2
+  );
+  const fontSize = clamp(bandDepth * 0.90, 52, minSide * 0.24);
+
+  const subtitleRaw = (state.subtitleValue || "").trim();
+  const subChars = subtitleRaw;
+
+  // Perimeter as a polyline of waypoints; interior corners become rounded
+  // quarter-arcs so the text ribbon flows continuously around them instead of
+  // being chopped where two straight edges meet at 90°. `flip` re-orients a
+  // segment's letters so they read upright on edges that would otherwise invert.
+  const fc = frameCx;
+  let waypoints, edgeFlip, closed;
+  // No per-edge flip: letters keep "tops outward" all the way around, so the
+  // ribbon rotates continuously through every corner with no reflection seam.
+  // (The bottom decorative swirls read upside-down, which is fine for abstract
+  // calligraphy; the readable subtitle gets its own upright flip below.)
+  if (frameIsQuadSymmetric()) {
+    // No subtitle → the frame is one unified ornament with full four-fold
+    // symmetry. Render only the top-left quarter.
+    waypoints = [ {x:W/2,y:fc}, {x:fc,y:fc}, {x:fc,y:H/2} ];
+    edgeFlip  = [ false, false ];
+    closed = false;
+  } else if (state.mirrorMode === "horizontal") {
+    waypoints = [ {x:W/2,y:fc}, {x:fc,y:fc}, {x:fc,y:H-fc}, {x:W/2,y:H-fc} ];
+    edgeFlip  = [ false, false, false ];
+    closed = false;
+  } else if (state.mirrorMode === "vertical") {
+    waypoints = [ {x:fc,y:H/2}, {x:fc,y:fc}, {x:W-fc,y:fc}, {x:W-fc,y:H/2} ];
+    edgeFlip  = [ false, false, false ];
+    closed = false;
+  } else {
+    waypoints = [ {x:fc,y:fc}, {x:W-fc,y:fc}, {x:W-fc,y:H-fc}, {x:fc,y:H-fc} ];
+    edgeFlip  = [ false, false, false, false ];
+    closed = true;
+  }
+
+  const edgeN = closed ? waypoints.length : waypoints.length - 1;
+  const cornerR = 0; // square (sharp) frame corners
+
+  // Build line + arc segments with rounded corners.
+  const segs = [];
+  const edges = [];
+  for (let i = 0; i < edgeN; i++) {
+    const a = waypoints[i], b = waypoints[(i + 1) % waypoints.length];
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const tx = (b.x - a.x) / L, ty = (b.y - a.y) / L;
+    let nx = -ty, ny = tx; // inward normal (toward canvas centre)
+    if (nx * (W / 2 - a.x) + ny * (H / 2 - a.y) < 0) { nx = -nx; ny = -ny; }
+    edges.push({ a, b, tx, ty, nx, ny, flip: edgeFlip[i] });
+  }
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i];
+    const startCorner = closed || i > 0;
+    const endCorner = closed || i < edges.length - 1;
+    let x0 = e.a.x, y0 = e.a.y, x1 = e.b.x, y1 = e.b.y;
+    if (startCorner) { x0 += e.tx * cornerR; y0 += e.ty * cornerR; }
+    if (endCorner)   { x1 -= e.tx * cornerR; y1 -= e.ty * cornerR; }
+    segs.push({ type: "line", x0, y0, x1, y1, nx: e.nx, ny: e.ny, flip: e.flip });
+    if (endCorner) {
+      const next = edges[(i + 1) % edges.length];
+      const V = e.b;
+      const A = { x: V.x - e.tx * cornerR, y: V.y - e.ty * cornerR }; // arc start
+      const C = { x: A.x + e.nx * cornerR, y: A.y + e.ny * cornerR }; // arc centre
+      const Bp = { x: V.x + next.tx * cornerR, y: V.y + next.ty * cornerR }; // arc end
+      const a0 = Math.atan2(A.y - C.y, A.x - C.x);
+      let dA = Math.atan2(Bp.y - C.y, Bp.x - C.x) - a0;
+      while (dA > Math.PI) dA -= 2 * Math.PI;
+      while (dA < -Math.PI) dA += 2 * Math.PI;
+      segs.push({ type: "arc", cx: C.x, cy: C.y, R: cornerR, a0, a1: a0 + dA, flip: e.flip });
+    }
+  }
+
+  const segLens = segs.map((s) =>
+    s.type === "arc" ? s.R * Math.abs(s.a1 - s.a0) : Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
+  const cumLens = segLens.reduce((acc, l) => { acc.push((acc[acc.length - 1] || 0) + l); return acc; }, []);
+  const totalLen = cumLens[cumLens.length - 1];
+
+  // Sample the centreline at arc-distance `d` → world position, unit tangent,
+  // and inward normal (works for both straight and arc segments).
+  function sampleAt(d) {
+    d = clamp(d, 0, totalLen * 0.9999);
+    let si = 0;
+    while (si < segs.length - 1 && cumLens[si] < d) si++;
+    const seg = segs[si];
+    const segStart = si > 0 ? cumLens[si - 1] : 0;
+    const t = segLens[si] > 0 ? (d - segStart) / segLens[si] : 0;
+    if (seg.type === "arc") {
+      const a = seg.a0 + (seg.a1 - seg.a0) * t;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const dir = seg.a1 >= seg.a0 ? 1 : -1;
+      return { x: seg.cx + seg.R * ca, y: seg.cy + seg.R * sa,
+        nx: -ca, ny: -sa, tx: -sa * dir, ty: ca * dir, flip: seg.flip };
+    }
+    const L = Math.hypot(seg.x1 - seg.x0, seg.y1 - seg.y0) || 1;
+    return { x: seg.x0 + (seg.x1 - seg.x0) * t, y: seg.y0 + (seg.y1 - seg.y0) * t,
+      nx: seg.nx, ny: seg.ny, tx: (seg.x1 - seg.x0) / L, ty: (seg.y1 - seg.y0) / L, flip: seg.flip };
+  }
+
+  function perimToWorld(d, r) {
+    const s = sampleAt(d);
+    const sgn = s.flip ? -1 : 1;
+    return { x: s.x + s.nx * sgn * r, y: s.y + s.ny * sgn * r };
+  }
+
+  const offW = Math.ceil(totalLen);
+  // Measure the real glyph width in the decorative font (variable-width cursive)
+  // so the repeated text reliably OVERFILLS the perimeter. Estimating from
+  // fontSize underfills with narrow scripts, leaving a blank patch at the strip's
+  // end that surfaces as a gap/notch where the mirrored halves meet.
+  const _measCanvas = document.createElement("canvas").getContext("2d");
+  _measCanvas.font = `${fontSize}px ${_patternFontFamily}`;
+  const _unitW = Math.max(1, _measCanvas.measureText(rawChars + " ").width);
+  const repeats = Math.max(1, Math.ceil((totalLen * 2.3) / _unitW));
+  const displayText = (rawChars + " ").repeat(repeats).trimEnd();
+
+  // Render the repeated text into a horizontal strip the width of the perimeter.
+  // The title fills the whole frame; an optional subtitle replaces the BOTTOM edge
+  // so the top/sides + bottom together compose the complete frame.
+  function renderStrip() {
+    const off = document.createElement("canvas");
+    off.width = offW; off.height = offH;
+    const octx = off.getContext("2d");
+    octx.font = `${fontSize}px ${_patternFontFamily}`;
+    octx.fillStyle = "#fff";
+    octx.textBaseline = "middle";
+
+    const bufferZone = Math.ceil(bandDepth * 0.85);
+
+    // Apply text start offset: shift all title text along the perimeter
+    const offsetPx = Math.round((state.textStartOffset || 0) * totalLen);
+    let curX = 2 - offsetPx;
+    for (let char of displayText) {
+      const charW = octx.measureText(char).width;
+      let inForbiddenZone = false;
+      if (subChars) {
+        for (let i = 0; i < segs.length; i++) {
+          const seg = segs[i];
+          const isBottom = Math.abs(seg.y0 - (H - frameCx)) < 1 && Math.abs(seg.y1 - (H - frameCx)) < 1;
+          if (!isBottom) continue;
+          const segStart = i > 0 ? cumLens[i - 1] : 0;
+          const segEnd = cumLens[i];
+          if (curX + charW > segStart - bufferZone && curX < segEnd + bufferZone) {
+            inForbiddenZone = true;
+            break;
+          }
+        }
+      }
+      if (!inForbiddenZone) {
+        octx.fillText(char, curX, offH / 2);
+      }
+      curX += charW;
+    }
+
+    // 2. Draw the subtitle pre-rotated 180° in the bottom-edge segment region.
+    //    The bottom edge naturally inverts text (ny=-1), so pre-rotating makes it upright.
+    if (subChars) {
+      for (let i = 0; i < segs.length; i++) {
+        const seg = segs[i];
+        const isBottom = Math.abs(seg.y0 - (H - frameCx)) < 1 && Math.abs(seg.y1 - (H - frameCx)) < 1;
+        if (!isBottom) continue;
+        const segStart = i > 0 ? cumLens[i - 1] : 0;
+        const segEnd = cumLens[i];
+        const segW = segEnd - segStart;
+        const segMidX = segStart + segW / 2;
+
+        // Render subtitle into a small temporary canvas, then draw it vertically flipped into the strip
+        // Auto-scale font so the full subtitle text fits within the segment width
+        let subFontSize = fontSize;
+        const tmpC = document.createElement("canvas");
+        tmpC.width = Math.ceil(segW); tmpC.height = offH;
+        const tc = tmpC.getContext("2d");
+        tc.fillStyle = "#fff";
+        tc.textBaseline = "middle";
+        // Measure at full size first, then scale down if needed
+        tc.font = `${subFontSize}px ${_patternFontFamily}`;
+        const fullWidth = tc.measureText(subChars).width;
+        if (fullWidth > segW * 0.95) {
+          subFontSize = Math.floor(subFontSize * (segW * 0.95) / fullWidth);
+          tc.font = `${subFontSize}px ${_patternFontFamily}`;
+        }
+        // Repeat subtitle to fill the segment
+        const subReps = Math.max(1, Math.ceil(segW * 1.5 / tc.measureText(subChars + " ").width));
+        const subText = (subChars + " ").repeat(subReps).trimEnd();
+        // Draw subtitle text into temp canvas
+        let subX = 2;
+        for (let char of subText) {
+          const charW = tc.measureText(char).width;
+          if (subX > segW) break;
+          tc.fillText(char, subX, offH / 2);
+          subX += charW;
+        }
+        // Draw temp canvas vertically flipped into the main strip at the bottom segment position.
+        // Only flip Y (not rotate 180°) so text stays left-to-right after the bottom edge's ny=-1 inversion.
+        octx.save();
+        octx.translate(segStart, offH);
+        octx.scale(1, -1);
+        octx.drawImage(tmpC, 0, 0);
+        octx.restore();
+      }
+    }
+    return { canvas: off, ctx: octx };
+>>>>>>> Stashed changes
   }
 
   return {
@@ -417,6 +684,7 @@ function addCornerMass(ornaments, rect) {
     { x: rect.left, y: rect.bottom, angle: Math.PI * 0.75 },
   ];
 
+<<<<<<< Updated upstream
   for (const corner of corners) {
     if (!chance(0.45 + state.flourishes * 0.35)) continue;
     ornaments.push({
@@ -428,6 +696,133 @@ function addCornerMass(ornaments, rect) {
       width: scale * rand(0.7, 1.25),
       notch: rand(0.12, 0.22),
       phase: rand(0, Math.PI * 2),
+=======
+  const { ctx: octx } = cfg.renderStrip();
+
+  // ── Edge-pixel extraction ────────────────────────────────────────────────────
+  const raw = octx.getImageData(0, 0, offW, offH).data;
+  const filled = (x, y) => x >= 0 && x < offW && y >= 0 && y < offH && raw[(y * offW + x) * 4] > 64;
+  const isEdge = (x, y) =>
+    filled(x, y) && (!filled(x - 1, y) || !filled(x + 1, y) || !filled(x, y - 1) || !filled(x, y + 1));
+
+  const step = Math.max(2, Math.round(fontSize / 34));
+  const edgePts = [], edgeSet = new Set();
+  // Inset the scan range so edge pixels at the very outer/inner boundary of the
+  // strip don't produce debris fragments outside the visible frame.
+  const depthMargin = Math.max(3, Math.ceil(offH * 0.04));
+  for (let y = depthMargin; y < offH - depthMargin; y++) {
+    for (let x = 1; x < offW - 1; x++) {
+      if (!isEdge(x, y)) continue;
+      const sx = Math.round(x / step) * step;
+      const sy = Math.round(y / step) * step;
+      const key = sy * offW + sx;
+      if (!edgeSet.has(key)) { edgeSet.add(key); edgePts.push({ x: sx, y: sy }); }
+    }
+  }
+  if (edgePts.length < 8) return false;
+
+  // ── Direction-biased contour chaining ───────────────────────────────────────
+  const cellSize = step * 3;
+  const grid = new Map();
+  for (const p of edgePts) {
+    const gk = `${Math.floor(p.x / cellSize)},${Math.floor(p.y / cellSize)}`;
+    if (!grid.has(gk)) grid.set(gk, []);
+    grid.get(gk).push(p);
+  }
+
+  function nextAlong(cx, cy, dX, dY, maxDist, usedSet) {
+    const gx = Math.floor(cx / cellSize), gy = Math.floor(cy / cellSize);
+    let best = null, bestScore = Infinity;
+    const hasDir = dX !== 0 || dY !== 0;
+    for (let dgx = -2; dgx <= 2; dgx++) {
+      for (let dgy = -2; dgy <= 2; dgy++) {
+        const cell = grid.get(`${gx + dgx},${gy + dgy}`);
+        if (!cell) continue;
+        for (const p of cell) {
+          if (usedSet.has(p)) continue;
+          const dx = p.x - cx, dy = p.y - cy;
+          const d = Math.hypot(dx, dy);
+          if (d >= maxDist || d < 0.5) continue;
+          let score = d;
+          if (hasDir) {
+            const dot = (dx / d) * dX + (dy / d) * dY;
+            if (dot < -0.2) continue;
+            score += (1 - dot) * d * 1.8;
+          }
+          if (score < bestScore) { bestScore = score; best = p; }
+        }
+      }
+    }
+    return best;
+  }
+
+  const usedSet = new Set();
+  let rawChains = [];
+  const maxGap = step * 3.4;            // bridge bigger gaps while tracing
+  const minChainLen = Math.max(4, Math.round(fontSize * 0.08 / step));
+
+  for (const seed of edgePts) {
+    if (usedSet.has(seed)) continue;
+    const chain = [seed]; usedSet.add(seed);
+    let cur = seed, dX = 0, dY = 0;
+    for (let i = 0; i < 2000; i++) {
+      const next = nextAlong(cur.x, cur.y, dX, dY, maxGap, usedSet);
+      if (!next) break;
+      const ndx = next.x - cur.x, ndy = next.y - cur.y;
+      const nd = Math.hypot(ndx, ndy) || 1;
+      dX = dX * 0.55 + (ndx / nd) * 0.45;
+      dY = dY * 0.55 + (ndy / nd) * 0.45;
+      const dl = Math.hypot(dX, dY) || 1; dX /= dl; dY /= dl;
+      chain.push(next); usedSet.add(next); cur = next;
+    }
+    if (chain.length >= 3) rawChains.push(chain);
+  }
+  if (!rawChains.length) return false;
+
+  // ── Stitch pass ──────────────────────────────────────────────────────────────
+  // Greedily join chains whose endpoints sit close together so the frame reads
+  // as long flowing strokes instead of many short fragments.
+  const maxStitch = step * 7;
+  function stitchChains(chains) {
+    const remaining = chains.slice();
+    const out = [];
+    while (remaining.length) {
+      let current = remaining.shift();
+      let extended = true;
+      while (extended) {
+        extended = false;
+        const tail = current[current.length - 1];
+        let bestIdx = -1, bestDist = maxStitch, bestReverse = false;
+        for (let i = 0; i < remaining.length; i++) {
+          const c = remaining[i];
+          const dStart = Math.hypot(c[0].x - tail.x, c[0].y - tail.y);
+          const dEnd = Math.hypot(c[c.length - 1].x - tail.x, c[c.length - 1].y - tail.y);
+          if (dStart < bestDist) { bestDist = dStart; bestIdx = i; bestReverse = false; }
+          if (dEnd < bestDist) { bestDist = dEnd; bestIdx = i; bestReverse = true; }
+        }
+        if (bestIdx >= 0) {
+          let c = remaining.splice(bestIdx, 1)[0];
+          if (bestReverse) c = c.slice().reverse();
+          current = current.concat(c);
+          extended = true;
+        }
+      }
+      out.push(current);
+    }
+    return out;
+  }
+  rawChains = stitchChains(rawChains).filter((c) => c.length >= minChainLen);
+  if (!rawChains.length) return false;
+
+  // ── Smooth chains and warp to frame world coords ────────────────────────────
+  const smooth = (chain, win = 8) =>
+    chain.map((p, i) => {
+      let sx = 0, sy = 0, cnt = 0;
+      for (let j = Math.max(0, i - win); j <= Math.min(chain.length - 1, i + win); j++) {
+        sx += chain[j].x; sy += chain[j].y; cnt++;
+      }
+      return { x: sx / cnt, y: sy / cnt };
+>>>>>>> Stashed changes
     });
   }
 }
@@ -838,6 +1233,598 @@ function drawBorderText() {
       placement.alpha,
     );
   }
+<<<<<<< Updated upstream
+=======
+
+  // Clip away any debris that bleeds outside the frame rectangle.
+  // A generous bleed keeps the soft glow intact while removing stray fragments.
+  const bleed = cfg.offH * 0.15;
+  const fc = cfg.frameCx;
+  const px = canvas.width / state.canvasWidth;
+  fx.globalCompositeOperation = "destination-in";
+  fx.fillStyle = "#fff";
+  fx.beginPath();
+  fx.rect(
+    (fc - bleed) * px, (fc - bleed) * px,
+    (cfg.W - 2 * fc + 2 * bleed) * px, (cfg.H - 2 * fc + 2 * bleed) * px
+  );
+  fx.fill();
+  fx.globalCompositeOperation = "source-over";
+
+  _textFrameMaskCanvas = full;
+  _textFrameMaskSig = sig;
+  return full;
+}
+
+// White anti-aliased silhouette of the pattern (merged into blobs) and its inverse.
+// `mergeR` (scaled px) closes thin necks between nearby blobs metaball-style:
+// blur spreads the field, then re-stacking re-densifies it so adjacent shapes
+// fuse smoothly — all anti-aliased, so no pixelation.
+function buildBubbleSilhouette(scale, expandPx, mergeR = 0) {
+  const raw = createFxCanvas(scale);
+  const rctx = raw.getContext("2d");
+  const textMask = getTextFrameMask();
+  if (textMask) {
+    // Smooth source: the actual warped glyph silhouette. Fatten by expandPx via
+    // a blur+restack so the glass body wraps the ink edge cleanly.
+    rctx.save();
+    if (expandPx > 0.5) {
+      rctx.filter = `blur(${(expandPx * scale).toFixed(2)}px)`;
+      for (let i = 0; i < 4; i++) rctx.drawImage(textMask, 0, 0, raw.width, raw.height);
+      rctx.filter = "none";
+    }
+    rctx.drawImage(textMask, 0, 0, raw.width, raw.height);
+    rctx.restore();
+  } else {
+    rctx.save();
+    rctx.scale(scale, scale);
+    paintPathMask(rctx, 1, expandPx);
+    rctx.restore();
+  }
+
+  let S = raw;
+  if (mergeR > 0.5) {
+    S = createFxCanvas(scale);
+    const sctx = S.getContext("2d");
+    // Blur to spread, then stack draws so the soft field builds back to near-opaque
+    // (1−(1−a)^n) — bridges thin gaps while keeping soft, anti-aliased edges.
+    sctx.filter = `blur(${mergeR.toFixed(2)}px)`;
+    for (let i = 0; i < 6; i++) sctx.drawImage(raw, 0, 0);
+    sctx.filter = "none";
+    sctx.drawImage(raw, 0, 0); // crisp solid core on top
+  }
+
+  const inv = createFxCanvas(scale);
+  const ictx = inv.getContext("2d");
+  ictx.fillStyle = "#fff";
+  ictx.fillRect(0, 0, inv.width, inv.height);
+  ictx.globalCompositeOperation = "destination-out";
+  ictx.drawImage(S, 0, 0);
+  return { S, inv };
+}
+
+// Bubble / Blur — soft glow that DIFFUSES INWARD from the outline (like the
+// reference): brightest right at the contour, fading smoothly toward a dark
+// interior. Built entirely from Gaussian blur, so it's super smooth, no pixels.
+function drawBubbleBlurFx() {
+  if (!state.fxBubbleBlur) return;
+  const amount = clamp(state.fxBubbleStrength, 0, 1);
+  if (amount < 0.01 || !state.paths.length) return;
+
+  const density = clamp(state.fxBubbleBlurDensity, 0, 1);
+  const outlinePx = clamp(state.fxBubbleOutlinePx, 0, 14);
+  const minSide = Math.min(canvas.width, canvas.height);
+  // Work buffer at full canvas res (supersampled when small), capped at 4096px.
+  const scale = Math.min(1.6, 4096 / Math.max(canvas.width, canvas.height));
+  const expandPx = minSide * (0.006 + amount * 0.016);   // body fatten/merge
+  const mergeR = minSide * (0.012 + amount * 0.01) * scale; // fuse nearby blobs
+  const glowColor = state.fxBubbleGlowColor || "#ffffff";
+
+  const { S, inv } = buildBubbleSilhouette(scale, expandPx, mergeR);
+
+  // Inward-diffusion layers, all = blur(inverse) clipped INSIDE the shape, so each
+  // is bright at the contour and fades toward the interior. Deeper radius = the
+  // glow reaches further in (density pushes it deeper, toward a filled look).
+  const deepR = (minSide * (0.03 + amount * 0.05) + density * minSide * 0.05) * scale;
+  const midR  = (minSide * (0.012 + amount * 0.02)) * scale;
+  const edgeR = (minSide * 0.006 + outlinePx * 1.2) * scale;
+  const deep = blurMaskCopy(inv, scale, deepR, "destination-in", S);
+  const mid  = blurMaskCopy(inv, scale, midR, "destination-in", S);
+  const rim  = blurMaskCopy(inv, scale, edgeR, "destination-in", S);
+  tintLayer(deep, glowColor);
+  tintLayer(mid, glowColor);
+  tintLayer(rim, glowColor);
+
+  // A small soft outer feather so the silhouette boundary isn't a hard cut.
+  const outerR = (minSide * 0.005 + outlinePx * 0.6) * scale;
+  const outer = blurMaskCopy(S, scale, outerR, "destination-out", S);
+  tintLayer(outer, glowColor);
+
+  const grain = clamp(state.fxBubbleGrain, 0, 1);
+
+  // Assemble the glow into one layer so an optional grain dissolve can be applied
+  // to the whole bubble at once.
+  const L = createFxCanvas(scale);
+  const lc = L.getContext("2d");
+  lc.globalCompositeOperation = "screen";
+  lc.globalAlpha = 0.3 + amount * 0.22;  lc.drawImage(outer, 0, 0); // outer feather
+  lc.globalAlpha = 0.45 + amount * 0.3;  lc.drawImage(deep, 0, 0);  // deep diffusion
+  lc.globalAlpha = 0.6 + amount * 0.25;  lc.drawImage(mid, 0, 0);   // mid falloff
+  lc.globalAlpha = 0.9;                  lc.drawImage(rim, 0, 0);   // contour edge
+
+  // Fine film grain: subtly modulate the glow BRIGHTNESS with deterministic noise
+  // while leaving alpha (the silhouette/edge) untouched — so the outline stays
+  // clean & smooth and the grain reads as a film/print texture, not dotty edges.
+  if (grain > 0.01) {
+    applyFilmGrain(L, grain, state.seed >>> 0, Math.max(1, Math.round(scale)));
+  }
+
+  drawFxLayer(L, "screen", 1);
+}
+
+// In-place film grain on RGB only (alpha preserved → clean edges). Each pixel's
+// brightness is scaled by (1 ± grain·noise), giving a fine, even speckle texture.
+function applyFilmGrain(layer, amount, seed, cell) {
+  const w = layer.width, h = layer.height;
+  const lctx = layer.getContext("2d");
+  const img = lctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const gs = Math.max(1, cell | 0);
+  const s = (seed % 100000) * 0.0001;
+  const range = amount * 0.85; // max ± brightness swing
+  for (let y = 0; y < h; y++) {
+    const cy = (y / gs) | 0;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i + 3] === 0) continue;
+      const cx = (x / gs) | 0;
+      let n = Math.sin(cx * 127.1 + cy * 311.7 + s) * 43758.5453;
+      n = n - Math.floor(n);                 // 0..1
+      const f = 1 + (n - 0.5) * 2 * range;   // brightness factor
+      d[i]     = Math.max(0, Math.min(255, d[i] * f));
+      d[i + 1] = Math.max(0, Math.min(255, d[i + 1] * f));
+      d[i + 2] = Math.max(0, Math.min(255, d[i + 2] * f));
+    }
+  }
+  lctx.putImageData(img, 0, 0);
+}
+
+function drawEmbossFx() {
+  if (!state.fxEmbossDepth) return;
+  const amount = clamp(state.fxEmbossStrength, 0, 1);
+  if (amount < 0.01) return;
+
+  const offset = 0.45 + amount * 3.2;
+  const blur = 0.6 + amount * 2.8;
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, "#ffffff", 0.09 + amount * 0.24, {
+      widthScale: 1.02 + amount * 0.18,
+      blur,
+      offsetX: -offset,
+      offsetY: -offset,
+    });
+  });
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, "#000000", 0.1 + amount * 0.28, {
+      widthScale: 1.04 + amount * 0.22,
+      blur,
+      offsetX: offset,
+      offsetY: offset,
+    });
+  });
+  ctx.restore();
+}
+
+function buildHalftoneNoiseTexture() {
+  const key = [
+    canvas.width,
+    canvas.height,
+    state.fxHalftoneMix.toFixed(3),
+    state.strokeColor,
+    state.seed,
+  ].join("|");
+  if (halftoneNoiseCache.canvas && halftoneNoiseCache.key === key) return halftoneNoiseCache.canvas;
+
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = canvas.width;
+  textureCanvas.height = canvas.height;
+  const tctx = textureCanvas.getContext("2d");
+  tctx.clearRect(0, 0, textureCanvas.width, textureCanvas.height);
+
+  const mix = clamp(state.fxHalftoneMix, 0, 1);
+  const baseTone = mixRgb(state.strokeColor, "#ffffff", 0.28);
+  const tone = `rgba(${baseTone.r}, ${baseTone.g}, ${baseTone.b}, `;
+
+  const dotStep = Math.max(5, Math.round(16 - mix * 9));
+  const dotRadius = 0.8 + mix * 1.9;
+  for (let y = dotStep * 0.5; y < textureCanvas.height; y += dotStep) {
+    for (let x = dotStep * 0.5; x < textureCanvas.width; x += dotStep) {
+      const wave = stableNoise(x * 0.017 + y * 0.029 + state.seed * 0.0001);
+      const alpha = (0.03 + mix * 0.22) * (0.25 + wave * 0.95);
+      if (alpha < 0.02) continue;
+      tctx.fillStyle = `${tone}${alpha.toFixed(3)})`;
+      tctx.beginPath();
+      tctx.arc(x, y, dotRadius * (0.72 + wave * 0.6), 0, Math.PI * 2);
+      tctx.fill();
+    }
+  }
+
+  const noiseCount = Math.floor((textureCanvas.width * textureCanvas.height) / 2600 * (0.3 + (1 - mix) * 1.4));
+  for (let i = 0; i < noiseCount; i += 1) {
+    const x = stableNoise(i * 11.73 + state.seed * 0.0017) * textureCanvas.width;
+    const y = stableNoise(i * 6.19 + state.seed * 0.0007) * textureCanvas.height;
+    const shade = stableNoise(i * 17.83 + state.seed * 0.0013);
+    const alpha = (0.01 + (1 - mix) * 0.12) * (0.4 + shade * 0.8);
+    tctx.fillStyle = shade > 0.52
+      ? `rgba(255,255,255,${alpha.toFixed(3)})`
+      : `rgba(0,0,0,${(alpha * 0.9).toFixed(3)})`;
+    tctx.fillRect(x, y, 1 + shade * 1.6, 1 + stableNoise(i * 5.77) * 1.5);
+  }
+
+  halftoneNoiseCache = { key, canvas: textureCanvas };
+  return textureCanvas;
+}
+
+function drawHalftoneNoiseFx() {
+  if (!state.fxHalftoneNoise) return;
+  if (state.animate && state.progress < 0.99) return;
+
+  const texture = buildHalftoneNoiseTexture();
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = canvas.width;
+  maskCanvas.height = canvas.height;
+  const mctx = maskCanvas.getContext("2d");
+  paintFxClipMask(mctx, 1.36, 0, Math.min(canvas.width, canvas.height) * 0.004);
+
+  const layer = document.createElement("canvas");
+  layer.width = canvas.width;
+  layer.height = canvas.height;
+  const lctx = layer.getContext("2d");
+  lctx.drawImage(texture, 0, 0);
+  lctx.globalCompositeOperation = "destination-in";
+  lctx.drawImage(maskCanvas, 0, 0);
+
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(layer, 0, 0);
+  ctx.restore();
+}
+
+function drawCrayonPaperTexture() {
+  if (!state.fxWaxTexture) return;
+  const rough = clamp(state.fxWaxStrength, 0, 1);
+  if (rough < 0.02) return;
+  const strokeVisibility = clamp(state.strokeAlpha, 0, 1);
+  if (strokeVisibility < 0.001) return;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const textureCanvas = createFxCanvas();
+  const tctx = textureCanvas.getContext("2d");
+  const grainCount = Math.floor((w * h) / 1450 * (0.42 + rough * 2.15));
+  const sizeMin = 0.45;
+  const sizeMax = 1.35 + rough * 2.4;
+  const dark = mixRgb(state.strokeColor, "#000000", 0.78);
+  const light = mixRgb(state.strokeColor, "#ffffff", 0.86);
+  const mid = mixRgb(state.strokeColor, "#ffffff", 0.35);
+
+  tctx.clearRect(0, 0, w, h);
+  tctx.globalCompositeOperation = "source-over";
+  for (let i = 0; i < grainCount; i += 1) {
+    const x = stableNoise(i * 12.989 + 17.3) * w;
+    const y = stableNoise(i * 78.233 + 91.7) * h;
+    const tone = stableNoise(i * 35.173 + 6.4);
+    const size = sizeMin + stableNoise(i * 9.17 + 2.1) * (sizeMax - sizeMin);
+    const alpha = strokeVisibility * (0.022 + rough * 0.12) * (0.45 + tone * 0.85);
+    const color = tone < 0.44 ? dark : tone > 0.78 ? light : mid;
+    tctx.fillStyle = rgbToRgba(color, alpha);
+    tctx.fillRect(x, y, size * (0.6 + stableNoise(i * 5.91) * 1.4), size * (0.45 + stableNoise(i * 4.31) * 1.8));
+  }
+
+  const weaveStep = Math.max(3, Math.round(9 - rough * 4.5));
+  const weaveAlpha = strokeVisibility * (0.014 + rough * 0.07);
+  for (let y = 0; y < h; y += weaveStep) {
+    const wave = stableNoise(y * 0.113 + state.seed * 0.0003);
+    tctx.fillStyle = rgbToRgba(wave > 0.5 ? light : dark, weaveAlpha * (0.35 + wave * 0.9));
+    tctx.fillRect(0, y + wave * 1.2, w, Math.max(0.45, rough * 1.05));
+  }
+  for (let x = 0; x < w; x += weaveStep + 1) {
+    const wave = stableNoise(x * 0.097 + state.seed * 0.0004);
+    tctx.fillStyle = rgbToRgba(wave > 0.55 ? light : dark, weaveAlpha * (0.28 + wave * 0.72));
+    tctx.fillRect(x + wave * 1.1, 0, Math.max(0.35, rough * 0.8), h);
+  }
+
+  const maskCanvas = createFxCanvas();
+  const mctx = maskCanvas.getContext("2d");
+  paintFxClipMask(mctx, 1.48 + rough * 0.38, 0.8 + rough * 2.6, Math.min(w, h) * 0.006);
+  tctx.globalCompositeOperation = "destination-in";
+  tctx.drawImage(maskCanvas, 0, 0);
+
+  ctx.save();
+  ctx.globalAlpha = 0.72 + rough * 0.24;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(textureCanvas, 0, 0);
+  ctx.restore();
+}
+
+function pointOnPath(points, travel, progress = 1) {
+  if (points.length < 2 || progress <= 0) return null;
+  const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
+  const maxIndex = drawCount - 1;
+  let totalLength = 0;
+  for (let i = 1; i < drawCount; i += 1) totalLength += distance(points[i - 1], points[i]);
+  if (totalLength <= 0) return { x: points[0].x, y: points[0].y, angle: 0 };
+
+  let target = ((travel % 1) + 1) % 1 * totalLength;
+  for (let i = 1; i <= maxIndex; i += 1) {
+    const p0 = points[i - 1];
+    const p1 = points[i];
+    const length = distance(p0, p1);
+    if (target <= length || i === maxIndex) {
+      const t = length <= 0 ? 0 : target / length;
+      return {
+        x: p0.x + (p1.x - p0.x) * t,
+        y: p0.y + (p1.y - p0.y) * t,
+        angle: Math.atan2(p1.y - p0.y, p1.x - p0.x),
+      };
+    }
+    target -= length;
+  }
+  const last = points[maxIndex];
+  const prev = points[Math.max(0, maxIndex - 1)];
+  return { x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) };
+}
+
+function drawAudioTravellers() {
+  const motion = audioMotion();
+  if (!motion.active) return;
+  const segments = [];
+  forEachPathSegment((points, width, progress, phase) => {
+    if (points.length > 2 && progress > 0.05) segments.push({ points, width, progress, phase });
+  });
+  if (!segments.length) return;
+
+  const scale = clamp(880 / Math.max(canvas.width, canvas.height), 0.46, 1);
+  const blobMask = createFxCanvas(scale);
+  const bctx = blobMask.getContext("2d");
+  const audioColor = state.fxBubbleGlowColor || "#ff7bc4";
+  const audioGlowColor = mixRgb(audioColor, "#ffffff", 0.36);
+  const audioRimColor = mixRgb(audioColor, "#ffffff", 0.58);
+  const impact = clamp(motion.beat * 0.75 + motion.transient * 0.95 + motion.bass * 0.45, 0, 1);
+  const blobCount = Math.min(64, Math.max(16, Math.floor(16 + motion.energy * 22 + impact * 24)));
+  const trailSteps = 6 + Math.floor(motion.mid * 4 + impact * 3);
+
+  bctx.save();
+  bctx.scale(scale, scale);
+  bctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < blobCount; i += 1) {
+    const pick = Math.floor(stableNoise(i * 41.3 + state.seed * 0.00017) * segments.length) % segments.length;
+    const segment = segments[pick];
+    const offset = stableNoise(i * 17.71 + segment.phase * 3.1);
+    const direction = stableNoise(i * 9.91 + state.seed * 0.00023) > 0.5 ? 1 : -1;
+    const travelSpeed = 0.058 + motion.bass * 0.24 + motion.mid * 0.075 + impact * 0.12 + stableNoise(i * 5.37) * 0.05;
+    const travel = offset + direction * motion.phase * travelSpeed + impact * (0.035 + i * 0.0012);
+    const point = pointOnPath(segment.points, travel, segment.progress);
+    if (!point) continue;
+
+    const pulse = 0.82 + motion.bass * 1.95 + motion.beat * 2.6 + motion.transient * 3 + stableNoise(i * 3.19 + motion.phase * 7.1) * 0.52;
+    const radius = Math.max(4.2, segment.width * (1 + pulse * 0.62));
+    const angle = point.angle + Math.sin(motion.phase * 5.8 + i) * (0.24 + impact * 0.32);
+    const stretch = 1.08 + motion.bass * 0.55 + impact * 0.5 + stableNoise(i * 2.47) * 0.45;
+
+    bctx.fillStyle = `rgba(255, 255, 255, ${0.54 + impact * 0.32})`;
+    bctx.beginPath();
+    bctx.ellipse(point.x, point.y, radius * stretch, radius * (0.72 + motion.treble * 0.18), angle, 0, Math.PI * 2);
+    bctx.fill();
+
+    for (let trail = 1; trail <= trailSteps; trail += 1) {
+      const trailPoint = pointOnPath(segment.points, travel - direction * trail * (0.014 + motion.mid * 0.008 + impact * 0.007), segment.progress);
+      if (!trailPoint) continue;
+      const falloff = 1 - trail / (trailSteps + 1);
+      const trailRadius = Math.max(2.2, radius * (0.34 + falloff * 0.42));
+      bctx.fillStyle = `rgba(255, 255, 255, ${0.22 + falloff * (0.4 + motion.energy * 0.22 + impact * 0.2)})`;
+      bctx.beginPath();
+      bctx.ellipse(trailPoint.x, trailPoint.y, trailRadius * (1 + motion.bass * 0.28), trailRadius * 0.7, trailPoint.angle, 0, Math.PI * 2);
+      bctx.fill();
+    }
+
+    const satellites = 1 + Math.floor(stableNoise(i * 6.13 + motion.phase) * (3 + impact * 3));
+    for (let j = 0; j < satellites; j += 1) {
+      const theta = point.angle + Math.PI / 2 + (j - 1) * 0.88 + Math.sin(motion.phase * 3.6 + i + j) * 0.36;
+      const dist = radius * (0.75 + stableNoise(i * 8.1 + j) * (1.25 + impact * 0.7));
+      const satRadius = Math.max(1.9, radius * (0.2 + stableNoise(i * 11.9 + j) * 0.3) * (1 + impact * 1.15));
+      bctx.fillStyle = `rgba(255, 255, 255, ${0.24 + motion.treble * 0.3 + impact * 0.18})`;
+      bctx.beginPath();
+      bctx.arc(point.x + Math.cos(theta) * dist, point.y + Math.sin(theta) * dist, satRadius, 0, Math.PI * 2);
+      bctx.fill();
+    }
+  }
+  bctx.restore();
+
+  const blurredMask = createFxCanvas(scale);
+  const blurredCtx = blurredMask.getContext("2d");
+  blurredCtx.filter = `blur(${((8 + motion.bass * 14 + impact * 11) * scale).toFixed(2)}px)`;
+  blurredCtx.drawImage(blobMask, 0, 0);
+
+  const liquidMask = thresholdMaskWithTexture(
+    blurredMask,
+    18 + motion.treble * 18 - impact * 8,
+    0.3 + motion.treble * 0.32 + impact * 0.24,
+    motion.phase
+  );
+  const pathClip = drawExpandedPathMask(1.75 + motion.bass * 0.46 + impact * 0.32, 6 + motion.energy * 9 + impact * 10, 2 + motion.mid * 3 + impact * 2, scale);
+  const maskCtx = liquidMask.getContext("2d");
+  maskCtx.globalCompositeOperation = "destination-in";
+  maskCtx.drawImage(pathClip, 0, 0);
+
+  const glowMask = createFxCanvas(scale);
+  const glowCtx = glowMask.getContext("2d");
+  glowCtx.filter = `blur(${((6 + motion.energy * 12 + impact * 8) * scale).toFixed(2)}px)`;
+  glowCtx.drawImage(liquidMask, 0, 0);
+  glowCtx.globalCompositeOperation = "destination-in";
+  glowCtx.drawImage(pathClip, 0, 0);
+
+  const liquidLayer = tintedMaskLayer(liquidMask, audioColor, 0.62 + impact * 0.28);
+  const glowLayer = tintedMaskLayer(glowMask, audioGlowColor, 0.18 + motion.energy * 0.28 + impact * 0.18);
+  const rimMask = subtractMask(liquidMask, erodeMask(liquidMask, 1 + impact * 1.8));
+  const rimLayer = tintedMaskLayer(rimMask, audioRimColor, 0.58 + motion.treble * 0.18 + impact * 0.14);
+
+  drawFxLayer(glowLayer, "screen", 0.82);
+  drawFxLayer(liquidLayer, "source-over", 0.7 + motion.energy * 0.22);
+  drawFxLayer(rimLayer, "screen", 0.95);
+}
+
+// Warp the horizontal text strip onto a full-resolution layer following the
+// frame perimeter. On straight edges the warp is a rigid rotation+translation,
+// so one setTransform per segment reproduces it exactly. Returns a canvas
+// holding the warped white glyphs (base half only — caller mirrors).
+function warpStripToLayer(cfg) {
+  const { offH, totalLen, sampleAt, renderStrip } = cfg;
+  const strip = renderStrip().canvas;
+  const layer = document.createElement("canvas");
+  layer.width = canvas.width;
+  layer.height = canvas.height;
+  const lctx = layer.getContext("2d");
+  const px = canvas.width / state.canvasWidth; // device-pixel scale (usually 1)
+
+  // Draw the strip in thin slices stepping along the perimeter. Each slice is
+  // oriented by the tangent/normal sampled at its centre, so on rounded corners
+  // the slices fan smoothly around the bend instead of being chopped at a 90°
+  // joint. Straight runs render identically to a single affine.
+  const stepW = 3;        // strip-x advance per slice (world px)
+  const overlap = 0.8;    // overdraw to hide hairline seams between slices
+  for (let d = 0; d < totalLen; d += stepW) {
+    const sliceW = Math.min(stepW, totalLen - d);
+    if (sliceW <= 0) break;
+    const s = sampleAt(d + sliceW / 2);
+    const sgn = s.flip ? -1 : 1;
+    const nx = s.nx * sgn, ny = s.ny * sgn;
+    const p0x = s.x - s.tx * (sliceW / 2); // centreline at strip x = d
+    const p0y = s.y - s.ty * (sliceW / 2);
+    lctx.setTransform(
+      s.tx * px, s.ty * px,
+      nx * px, ny * px,
+      (p0x - s.tx * d - nx * offH / 2) * px,
+      (p0y - s.ty * d - ny * offH / 2) * px,
+    );
+    lctx.drawImage(strip, d, 0, sliceW + overlap, offH, d, 0, sliceW + overlap, offH);
+  }
+  lctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // Clip away debris outside the frame rectangle.
+  // Allow a small bleed (half the glyph depth) so the glow
+  // doesn't get hard-cut, but any stray corner fragments vanish.
+  const bleed = offH * 0.15;
+  const fc = cfg.frameCx;
+  const W = cfg.W, H = cfg.H;
+  lctx.globalCompositeOperation = "destination-in";
+  lctx.fillStyle = "#fff";
+  lctx.beginPath();
+  lctx.rect(
+    (fc - bleed) * px, (fc - bleed) * px,
+    (W - 2 * fc + 2 * bleed) * px, (H - 2 * fc + 2 * bleed) * px
+  );
+  lctx.fill();
+  lctx.globalCompositeOperation = "source-over";
+
+  return layer;
+}
+
+// Recolour the opaque pixels of a layer in place via source-in.
+function tintLayer(layer, color) {
+  const lctx = layer.getContext("2d");
+  lctx.globalCompositeOperation = "source-in";
+  lctx.fillStyle = color;
+  lctx.fillRect(0, 0, layer.width, layer.height);
+  lctx.globalCompositeOperation = "source-over";
+}
+
+// Composite a base-half layer onto the main canvas, mirroring to match the frame.
+function compositeMirrored(layer, alpha, mode) {
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.globalCompositeOperation = mode;
+  const stamp = (sx, sy) => {
+    ctx.save();
+    ctx.translate(sx < 0 ? canvas.width : 0, sy < 0 ? canvas.height : 0);
+    ctx.scale(sx, sy);
+    ctx.drawImage(layer, 0, 0);
+    ctx.restore();
+  };
+  if (frameIsQuadSymmetric()) {
+    stamp(1, 1); stamp(-1, 1); stamp(1, -1); stamp(-1, -1);
+  } else {
+    stamp(1, 1);
+    if (state.mirrorMode === "horizontal") stamp(-1, 1);
+    else if (state.mirrorMode === "vertical") stamp(1, -1);
+  }
+  ctx.restore();
+}
+
+// Clean text frame: the warped decorative letters rendered directly as the frame
+// (no messy contour tracing), with a neon glow in the chosen colour.
+function drawTextFrame() {
+  if (!state.useTextSeed || !state.textAsStroke) return;
+  const cfg = getFrameWarpConfig();
+  if (!cfg) return;
+
+  const baseLayer = warpStripToLayer(cfg);   // white glyphs (already clipped)
+
+  const fs = cfg.fontSize;
+
+  // Colourise a copy of the glyphs.
+  const colored = document.createElement("canvas");
+  colored.width = canvas.width; colored.height = canvas.height;
+  const cc = colored.getContext("2d");
+  cc.drawImage(baseLayer, 0, 0);
+  cc.globalCompositeOperation = "source-in";
+  cc.fillStyle = state.textColor;
+  cc.fillRect(0, 0, colored.width, colored.height);
+  cc.globalCompositeOperation = "source-over";
+
+  // Bake glow + core into a single base-half frame layer.
+  const frame = document.createElement("canvas");
+  frame.width = canvas.width; frame.height = canvas.height;
+  const fctx = frame.getContext("2d");
+  fctx.globalCompositeOperation = "lighter";
+  fctx.globalAlpha = 0.4;
+  fctx.filter = `blur(${(fs * 0.3).toFixed(1)}px)`;
+  fctx.drawImage(colored, 0, 0);
+  fctx.globalAlpha = 0.7;
+  fctx.filter = `blur(${(fs * 0.09).toFixed(1)}px)`;
+  fctx.drawImage(colored, 0, 0);
+  fctx.filter = "none";
+  fctx.globalCompositeOperation = "source-over";
+  fctx.globalAlpha = 1;
+  fctx.drawImage(colored, 0, 0);
+  // Bright white core for the neon-tube highlight.
+  fctx.globalCompositeOperation = "lighter";
+  fctx.globalAlpha = 0.5;
+  fctx.filter = `blur(${(fs * 0.02 + 1).toFixed(1)}px)`;
+  fctx.drawImage(baseLayer, 0, 0);
+  fctx.filter = "none";
+  fctx.globalAlpha = 1;
+
+  compositeMirrored(frame, 1, "source-over");
+}
+
+// Hidable reference overlay: same warped letters tinted pink, so the user can
+// read the source text and see how it bends around the frame.
+function drawTextReference() {
+  if (!state.useTextSeed || !state.showTextReference) return;
+  const cfg = getFrameWarpConfig();
+  if (!cfg) return;
+  const layer = warpStripToLayer(cfg);
+  tintLayer(layer, "#ff5ea0");
+  compositeMirrored(layer, 0.55, "screen");
+>>>>>>> Stashed changes
 }
 
 function draw() {
@@ -1043,6 +2030,75 @@ function bindControls() {
     });
   });
 
+<<<<<<< Updated upstream
+=======
+  document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      state.mirrorMode = radio.value;
+      buildPattern();
+    });
+  });
+
+  document.getElementById("textSeedInput").addEventListener("input", (event) => {
+    state.textSeedValue = event.target.value;
+    updateTextSeedMeta(state.textSeedValue);
+  });
+  document.getElementById("textSeedInput").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    buildPattern();
+  });
+
+  document.getElementById("subtitleInput").addEventListener("input", (event) => {
+    state.subtitleValue = event.target.value;
+  });
+  document.getElementById("subtitleInput").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    buildPattern();
+  });
+
+  document.getElementById("textStartSlider").addEventListener("input", (event) => {
+    state.textStartOffset = parseFloat(event.target.value);
+    document.getElementById("textStartVal").textContent = Math.round(state.textStartOffset * 100) + "%";
+    buildPattern();
+  });
+
+  document.getElementById("textSeedToggle").addEventListener("change", (event) => {
+    state.useTextSeed = event.target.checked;
+    updateTextSeedMeta(state.textSeedValue);
+    buildPattern();
+  });
+
+  document.getElementById("textReferenceToggle").addEventListener("change", (event) => {
+    state.showTextReference = event.target.checked;
+    draw();
+  });
+
+  document.getElementById("textAsStrokeToggle").addEventListener("change", (event) => {
+    state.textAsStroke = event.target.checked;
+    buildPattern();
+  });
+
+  document.getElementById("textColorInput").addEventListener("input", (event) => {
+    state.textColor = event.target.value;
+    draw();
+  });
+
+  document.getElementById("applyTextSeed").addEventListener("click", () => {
+    buildPattern();
+  });
+  document.getElementById("fxBubbleToggle").addEventListener("change", (event) => {
+    state.fxBubbleBlur = event.target.checked;
+    draw();
+  });
+  document.getElementById("fxGlassToggle").addEventListener("change", (event) => {
+    state.fxGlassPolish = event.target.checked;
+    draw();
+  });
+
+>>>>>>> Stashed changes
   document.getElementById("canvasPresets").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-size]");
     if (!button) return;
@@ -1102,6 +2158,27 @@ function bindControls() {
   window.addEventListener("resize", () => updateMarker(true));
 }
 
+<<<<<<< Updated upstream
+=======
+applyColorPreset(state.colorChoice);
+document.getElementById("startFromBottomToggle").checked = state.startFromBottom;
+document.getElementById("textSeedToggle").checked = state.useTextSeed;
+document.getElementById("textReferenceToggle").checked = state.showTextReference;
+document.getElementById("textAsStrokeToggle").checked = state.textAsStroke;
+document.getElementById("textColorInput").value = state.textColor;
+document.getElementById("textSeedInput").value = state.textSeedValue;
+document.getElementById("subtitleInput").value = state.subtitleValue;
+document.getElementById("textStartSlider").value = state.textStartOffset;
+document.getElementById("textStartVal").textContent = Math.round(state.textStartOffset * 100) + "%";
+document.getElementById("fxBubbleToggle").checked = state.fxBubbleBlur;
+document.getElementById("fxGlassToggle").checked = state.fxGlassPolish;
+document.getElementById("fxPatternColorInput").value = state.strokeColor;
+document.getElementById("fxBubbleColorInput").value = state.fxBubbleGlowColor;
+document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
+  radio.checked = radio.value === state.mirrorMode;
+});
+updateTextSeedMeta(state.textSeedValue);
+>>>>>>> Stashed changes
 syncInputs();
 resizeCanvas();
 bindControls();

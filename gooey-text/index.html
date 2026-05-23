@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gooey Liquid Text</title>
+    <meta name="description" content="Create stunning gooey liquid text effects with connected liquid frames" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+    <!-- Safari Canvas ctx.filter polyfill to support blur/glow effects -->
+    <script src="https://cdn.jsdelivr.net/npm/context-filter-polyfill/dist/index.min.js"></script>
+  </head>
+  <body class="darkmode">
+    <button id="mobileToggle" class="generate-button mobile-toggle">Toggle Controls</button>
+
+    <aside id="controls" class="stacked">
+      <div id="uiControls" class="top-tabs">
+        <label class="selected">
+          <input type="radio" name="controlsPosition" value="stacked" checked />
+          <span>Stacked</span>
+        </label>
+        <label>
+          <input type="radio" name="controlsPosition" value="along-top" />
+          <span>Along Top</span>
+        </label>
+        <label>
+          <input type="radio" name="controlsPosition" value="hideControls" />
+          <span>Hidden</span>
+        </label>
+      </div>
+
+      <div id="controlBlocksContainer">
+        <!-- Canvas -->
+        <section class="control-block">
+          <div class="control-title">
+            <p>Canvas</p>
+          </div>
+          <div class="canvas-buttons" id="canvasPresets">
+            <button data-size="full" class="canvas-size-button">
+              <span class="size-icon full"></span>
+              <span>Full</span>
+            </button>
+            <button data-size="9x16" class="canvas-size-button">
+              <span class="size-icon tall"></span>
+              <span>9x16</span>
+            </button>
+            <button data-size="4x5" class="canvas-size-button">
+              <span class="size-icon portrait"></span>
+              <span>4x5</span>
+            </button>
+            <button data-size="16x9" class="canvas-size-button">
+              <span class="size-icon wide"></span>
+              <span>16x9</span>
+            </button>
+          </div>
+          <div class="half-grid">
+            <div class="field">
+              <label>Canvas Width</label>
+              <input data-key="canvasWidth" type="range" min="300" max="4000" step="1" />
+              <input data-key="canvasWidth" class="value-input" type="number" />
+            </div>
+            <div class="field">
+              <label>Canvas Height</label>
+              <input data-key="canvasHeight" type="range" min="300" max="4000" step="1" />
+              <input data-key="canvasHeight" class="value-input" type="number" />
+            </div>
+          </div>
+          <div class="bg-upload-row">
+            <label class="upload-label image-upload-label">
+              <input id="bgUpload" type="file" accept="image/*" />
+              Upload Background
+            </label>
+            <button id="clearBg" class="tiny-button" disabled>Clear</button>
+          </div>
+          <div id="bgFileName" class="file-meta">No background image</div>
+        </section>
+
+        <!-- Text -->
+        <section class="control-block">
+          <div class="control-title">
+            <p>Text</p>
+          </div>
+          <div class="field">
+            <label>Title</label>
+            <input id="titleInput" type="text" class="text-seed-input" placeholder="Type your title..." value="UNTRANSLATED" />
+          </div>
+          <div class="field">
+            <label>Font Size <span id="fontSizeValue">160</span></label>
+            <input data-key="fontSize" type="range" min="40" max="500" step="1" />
+          </div>
+          <div class="field">
+            <label>Letter Spacing <span id="letterSpacingValue">0</span></label>
+            <input data-key="letterSpacing" type="range" min="-20" max="60" step="1" />
+          </div>
+          <div class="field">
+            <label>Line Height <span id="lineHeightValue">1.1</span></label>
+            <input data-key="lineHeight" type="range" min="0.6" max="2.0" step="0.05" />
+          </div>
+          <div class="field">
+            <label>Text Y Offset <span id="textYOffsetValue">0</span></label>
+            <input data-key="textYOffset" type="range" min="-600" max="600" step="1" />
+          </div>
+          <div class="field">
+            <label>Max Width % <span id="maxWidthPctValue">85</span></label>
+            <input data-key="maxWidthPct" type="range" min="30" max="100" step="1" />
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="uppercaseToggle" type="checkbox" checked />
+            <span>Uppercase</span>
+          </label>
+          <label class="switch-row style-switch-row">
+            <input id="boldToggle" type="checkbox" checked />
+            <span>Bold</span>
+          </label>
+        </section>
+
+        <!-- Gooey Effect -->
+        <section class="control-block">
+          <div class="control-title">
+            <p>Gooey Effect</p>
+          </div>
+          <div class="field">
+            <label>Blur Amount <span id="gooeyBlurValue">18</span></label>
+            <input data-key="gooeyBlur" type="range" min="2" max="60" step="0.5" />
+          </div>
+          <div class="field">
+            <label>Contrast (threshold) <span id="gooeyContrastValue">35</span></label>
+            <input data-key="gooeyContrast" type="range" min="5" max="80" step="1" />
+          </div>
+          <div class="field">
+            <label>Glow Radius <span id="glowRadiusValue">20</span></label>
+            <input data-key="glowRadius" type="range" min="0" max="80" step="1" />
+          </div>
+          <div class="field">
+            <label>Glow Opacity <span id="glowOpacityValue">0.6</span></label>
+            <input data-key="glowOpacity" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Highlight Intensity <span id="innerGlowValue">0.5</span></label>
+            <input data-key="innerGlow" type="range" min="0" max="1" step="0.01" />
+          </div>
+        </section>
+
+        <!-- Frame -->
+        <section class="control-block">
+          <div class="control-title">
+            <p>Frame</p>
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="frameToggle" type="checkbox" checked />
+            <span>Show Frame</span>
+          </label>
+          <div class="field">
+            <label>Frame Thickness <span id="frameThicknessValue">12</span></label>
+            <input data-key="frameThickness" type="range" min="2" max="40" step="0.5" />
+          </div>
+          <div class="field">
+            <label>Frame Padding <span id="framePaddingValue">35</span></label>
+            <input data-key="framePadding" type="range" min="5" max="120" step="1" />
+          </div>
+          <div class="field">
+            <label>Frame Roundness <span id="frameRoundnessValue">8</span></label>
+            <input data-key="frameRoundness" type="range" min="0" max="60" step="1" />
+          </div>
+          <div class="field">
+            <label>Frame Waviness <span id="frameWavinessValue">30</span></label>
+            <input data-key="frameWaviness" type="range" min="0" max="120" step="1" />
+          </div>
+          <div class="field">
+            <label>Logo Corner (TL) <span id="logoCornerSizeValue">200</span></label>
+            <input data-key="logoCornerSize" type="range" min="0" max="500" step="5" />
+          </div>
+          <label class="switch-row style-switch-row">
+            <input id="frameBlobsToggle" type="checkbox" checked />
+            <span>Liquid Connectors</span>
+          </label>
+          <div class="field">
+            <label>Blob Count <span id="blobCountValue">8</span></label>
+            <input data-key="blobCount" type="range" min="0" max="30" step="1" />
+          </div>
+          <div class="field">
+            <label>Blob Size <span id="blobSizeValue">25</span></label>
+            <input data-key="blobSize" type="range" min="5" max="80" step="1" />
+          </div>
+          <div class="field">
+            <label>Drip Length <span id="dripLengthValue">40</span></label>
+            <input data-key="dripLength" type="range" min="0" max="150" step="1" />
+          </div>
+        </section>
+
+        <!-- Style -->
+        <section class="control-block">
+          <div class="control-title">
+            <p>Style</p>
+          </div>
+          <div class="field">
+            <label>Shape Color</label>
+            <input id="fgColorInput" type="color" value="#e8e4c0" />
+          </div>
+          <div class="field">
+            <label>Highlight Color</label>
+            <input id="innerColorInput" type="color" value="#ffffff" />
+          </div>
+          <div class="field">
+            <label>Highlight Tightness <span id="innerTightnessValue">0.65</span></label>
+            <input data-key="innerTightness" type="range" min="0.1" max="0.9" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Background Color</label>
+            <input id="bgColorInput" type="color" value="#5c5a32" />
+          </div>
+          <div class="field">
+            <label>Background Opacity <span id="bgOpacityValue">1.00</span></label>
+            <input id="bgOpacityInput" type="range" min="0" max="1" step="0.01" value="1" />
+          </div>
+          <div class="field">
+            <label>Grain <span id="grainValue">0</span></label>
+            <input data-key="grain" type="range" min="0" max="1" step="0.01" />
+          </div>
+        </section>
+
+        <!-- Audio Reactivity -->
+        <section class="control-block">
+          <div class="section-title"><p>Audio Reactivity</p></div>
+          <div class="field">
+            <label>Audio File</label>
+            <div class="main-button">
+              <button id="audioUploadBtn" class="generate-button" style="font-size:11px">📂 Upload Audio</button>
+              <input id="audioUpload" type="file" accept="audio/*" style="display:none" />
+            </div>
+            <span id="audioFileName" class="file-name" style="margin-top:4px;display:block;opacity:0.5;font-size:11px">No audio loaded</span>
+          </div>
+          <div class="field">
+            <button id="micToggle" class="generate-button" style="font-size:11px;width:100%">🎤 Use Microphone</button>
+          </div>
+          <div class="field" id="audioPlayControls" style="display:none">
+            <button id="audioPlayPause" class="generate-button" style="font-size:11px;width:100%">▶ Play</button>
+          </div>
+          <div class="field">
+            <label>Reactivity <span id="audioReactivityValue">50</span>%</label>
+            <input id="audioReactivitySlider" type="range" min="0" max="100" step="1" value="50" />
+          </div>
+          <div class="field">
+            <label>Bass → Waviness <span id="audioBassValue">0</span>%</label>
+            <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden">
+              <div id="audioBassBar" style="height:100%;width:0%;background:#ff6b6b;transition:width 0.05s"></div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Mid → Blur <span id="audioMidValue">0</span>%</label>
+            <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden">
+              <div id="audioMidBar" style="height:100%;width:0%;background:#ffd93d;transition:width 0.05s"></div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Treble → Glow <span id="audioTrebleValue">0</span>%</label>
+            <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden">
+              <div id="audioTrebleBar" style="height:100%;width:0%;background:#6bcaff;transition:width 0.05s"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Actions -->
+        <section class="control-block actions">
+          <div class="main-button">
+            <button id="generateButton" class="generate-button">Generate</button>
+            <button id="downloadButton" class="download-button" title="Download PNG">↓</button>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <main id="patternContainer" class="pattern padded">
+      <canvas id="patternCanvas"></canvas>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

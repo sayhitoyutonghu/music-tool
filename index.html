@@ -96,8 +96,27 @@ Precious</textarea>
             <input data-key="textSize" type="range" min="8" max="180" step="1" />
           </div>
           <div class="field">
+<<<<<<< Updated upstream
             <label>Text Spread</label>
             <input data-key="textLeading" type="range" min="0.8" max="2.4" step="0.05" />
+=======
+            <label>Subtitle (bottom edge)</label>
+            <input id="subtitleInput" type="text" class="text-seed-input" placeholder="Bottom-edge text..." />
+          </div>
+          <div class="field">
+            <label>Text Start <span id="textStartVal" style="float:right;opacity:0.6">0%</span></label>
+            <input id="textStartSlider" type="range" min="0" max="1" step="0.01" value="0" />
+          </div>
+          <div class="field">
+            <label>Text Color</label>
+            <input id="textColorInput" type="color" value="#ffffff" />
+          </div>
+          <button id="applyTextSeed" class="tiny-button">Apply Text Pattern</button>
+          <div id="textSeedMeta" class="file-meta">Text seed inactive</div>
+          <div class="field">
+            <label>Script Stroke Influence</label>
+            <input data-key="scriptStrokeInfluence" type="range" min="0" max="1" step="0.01" />
+>>>>>>> Stashed changes
           </div>
         </section>
 
