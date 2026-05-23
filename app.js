@@ -1275,6 +1275,15 @@ function addPointsToMap(points, cellMap, cellSize) {
 // This produces a single flowing calligraphic ribbon of letter shapes that
 // wraps continuously around all four frame edges.
 
+// When there's no subtitle the frame is a single unified ornament, so it's
+// rendered as one quadrant mirrored into all four corners (full four-fold
+// symmetry). A subtitle pins distinct text to the bottom edge, which breaks
+// that symmetry, so it falls back to the half-mirror layout.
+function frameIsQuadSymmetric() {
+  if ((state.subtitleValue || "").trim()) return false;
+  return state.mirrorMode === "horizontal" || state.mirrorMode === "vertical";
+}
+
 // Shared geometry for the text-on-a-path frame. Both the pattern generator and
 // the reference overlay use this so they are guaranteed to stay aligned.
 function getFrameWarpConfig() {
@@ -1309,7 +1318,15 @@ function getFrameWarpConfig() {
   // ribbon rotates continuously through every corner with no reflection seam.
   // (The bottom decorative swirls read upside-down, which is fine for abstract
   // calligraphy; the readable subtitle gets its own upright flip below.)
-  if (state.mirrorMode === "horizontal") {
+  if (frameIsQuadSymmetric()) {
+    // No subtitle → the frame is one unified ornament with full four-fold
+    // symmetry. Render only the top-left quarter (half of the top edge + half of
+    // the left edge, meeting at the TL corner); compositeMirrored reflects it
+    // into all four quadrants so every side mirrors the others.
+    waypoints = [ {x:W/2,y:fc}, {x:fc,y:fc}, {x:fc,y:H/2} ];
+    edgeFlip  = [ false, false ];
+    closed = false;
+  } else if (state.mirrorMode === "horizontal") {
     waypoints = [ {x:W/2,y:fc}, {x:fc,y:fc}, {x:fc,y:H-fc}, {x:W/2,y:H-fc} ]; // top→left→bottom
     edgeFlip  = [ false, false, false ];
     closed = false;
@@ -1323,15 +1340,8 @@ function getFrameWarpConfig() {
     closed = true;
   }
 
-  // Corner radius: large enough that the inner band radius stays positive
-  // (no fold), and small enough to fit on the shortest rounded edge.
-  let shortestEdge = Infinity;
   const edgeN = closed ? waypoints.length : waypoints.length - 1;
-  for (let i = 0; i < edgeN; i++) {
-    const a = waypoints[i], b = waypoints[(i + 1) % waypoints.length];
-    shortestEdge = Math.min(shortestEdge, Math.hypot(b.x - a.x, b.y - a.y));
-  }
-  const cornerR = clamp(bandDepth * 1.05, offH * 0.55, shortestEdge * 0.42);
+  const cornerR = 0; // square (sharp) frame corners
 
   // Build line + arc segments with rounded corners.
   const segs = [];
@@ -2397,11 +2407,19 @@ function getTextFrameMask() {
   const full = document.createElement("canvas");
   full.width = canvas.width; full.height = canvas.height;
   const fx = full.getContext("2d");
-  fx.drawImage(base, 0, 0);
-  if (state.mirrorMode === "horizontal") {
-    fx.save(); fx.translate(canvas.width, 0); fx.scale(-1, 1); fx.drawImage(base, 0, 0); fx.restore();
-  } else if (state.mirrorMode === "vertical") {
-    fx.save(); fx.translate(0, canvas.height); fx.scale(1, -1); fx.drawImage(base, 0, 0); fx.restore();
+  const stamp = (sx, sy) => {
+    fx.save();
+    fx.translate(sx < 0 ? canvas.width : 0, sy < 0 ? canvas.height : 0);
+    fx.scale(sx, sy);
+    fx.drawImage(base, 0, 0);
+    fx.restore();
+  };
+  if (frameIsQuadSymmetric()) {
+    stamp(1, 1); stamp(-1, 1); stamp(1, -1); stamp(-1, -1);
+  } else {
+    stamp(1, 1);
+    if (state.mirrorMode === "horizontal") stamp(-1, 1);
+    else if (state.mirrorMode === "vertical") stamp(1, -1);
   }
   _textFrameMaskCanvas = full;
   _textFrameMaskSig = sig;
@@ -2886,13 +2904,19 @@ function compositeMirrored(layer, alpha, mode) {
   ctx.save();
   ctx.globalAlpha = clamp(alpha, 0, 1);
   ctx.globalCompositeOperation = mode;
-  ctx.drawImage(layer, 0, 0);
-  if (state.mirrorMode === "horizontal") {
-    ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+  const stamp = (sx, sy) => {
+    ctx.save();
+    ctx.translate(sx < 0 ? canvas.width : 0, sy < 0 ? canvas.height : 0);
+    ctx.scale(sx, sy);
     ctx.drawImage(layer, 0, 0);
-  } else if (state.mirrorMode === "vertical") {
-    ctx.translate(0, canvas.height); ctx.scale(1, -1);
-    ctx.drawImage(layer, 0, 0);
+    ctx.restore();
+  };
+  if (frameIsQuadSymmetric()) {
+    stamp(1, 1); stamp(-1, 1); stamp(1, -1); stamp(-1, -1);
+  } else {
+    stamp(1, 1);
+    if (state.mirrorMode === "horizontal") stamp(-1, 1);
+    else if (state.mirrorMode === "vertical") stamp(1, -1);
   }
   ctx.restore();
 }
