@@ -34,7 +34,7 @@ const state = {
   startFromBottom: true,
   useCircleScaffold: true,
   showGuides: false,
-  textSeedValue: "",
+  textSeedValue: "untranslated",
   subtitleValue: "",
   useTextSeed: true,
   showTextReference: false,
@@ -1294,6 +1294,9 @@ function getFrameWarpConfig() {
   const frameCx = minSide * 0.02 + getPatternSafeMarginPx() + bandDepth * 0.31; // centreline inset
   const fontSize = clamp(bandDepth * 0.90, 52, minSide * 0.24);
 
+  const subtitleRaw = (state.subtitleValue || "").trim();
+  const subChars = subtitleRaw;
+
   // Perimeter segments (left half for horizontal mirror, top half for vertical,
   // full rectangle for none). Each carries its inward normal (nx, ny).
   const segs = [];
@@ -1335,9 +1338,6 @@ function getFrameWarpConfig() {
   const displayText = (rawChars + " ").repeat(repeats).trimEnd();
   const offW = Math.ceil(totalLen);
 
-  const subtitleRaw = (state.subtitleValue || "").trim();
-  const subChars = [...subtitleRaw].filter((c) => c.trim()).join("");
-
   // Render the repeated text into a horizontal strip the width of the perimeter.
   // The title fills the whole frame; an optional subtitle replaces the BOTTOM edge
   // so the top/sides + bottom together compose the complete frame.
@@ -1348,9 +1348,35 @@ function getFrameWarpConfig() {
     octx.font = `${fontSize}px ${_patternFontFamily}`;
     octx.fillStyle = "#fff";
     octx.textBaseline = "middle";
-    octx.fillText(displayText, 2, offH / 2);
 
-    // Override the bottom-edge segment(s) with the subtitle text.
+    const bufferZone = Math.ceil(bandDepth * 0.85);
+
+    // 1. Draw the title text character-by-character, skipping bottom-edge buffer zones
+    let curX = 2;
+    for (let char of displayText) {
+      const charW = octx.measureText(char).width;
+      let inForbiddenZone = false;
+      if (subChars) {
+        for (let i = 0; i < segs.length; i++) {
+          const seg = segs[i];
+          const isBottom = Math.abs(seg.y0 - (H - frameCx)) < 1 && Math.abs(seg.y1 - (H - frameCx)) < 1;
+          if (!isBottom) continue;
+          const segStart = i > 0 ? cumLens[i - 1] : 0;
+          const segEnd = cumLens[i];
+          if (curX + charW > segStart - bufferZone && curX < segEnd + bufferZone) {
+            inForbiddenZone = true;
+            break;
+          }
+        }
+      }
+      if (!inForbiddenZone) {
+        octx.fillText(char, curX, offH / 2);
+      }
+      curX += charW;
+    }
+
+    // 2. Draw the subtitle pre-rotated 180° in the bottom-edge segment region.
+    //    The bottom edge naturally inverts text (ny=-1), so pre-rotating makes it upright.
     if (subChars) {
       for (let i = 0; i < segs.length; i++) {
         const seg = segs[i];
@@ -1359,14 +1385,40 @@ function getFrameWarpConfig() {
         const segStart = i > 0 ? cumLens[i - 1] : 0;
         const segEnd = cumLens[i];
         const segW = segEnd - segStart;
-        octx.save();
-        octx.beginPath();
-        octx.rect(segStart, 0, segW, offH);
-        octx.clip();
-        octx.clearRect(segStart, 0, segW, offH);
-        const subReps = Math.max(1, Math.ceil(segW * 1.1 / (estCharW * subChars.length)));
+        const segMidX = segStart + segW / 2;
+
+        // Render subtitle into a small temporary canvas, then draw it vertically flipped into the strip
+        // Auto-scale font so the full subtitle text fits within the segment width
+        let subFontSize = fontSize;
+        const tmpC = document.createElement("canvas");
+        tmpC.width = Math.ceil(segW); tmpC.height = offH;
+        const tc = tmpC.getContext("2d");
+        tc.fillStyle = "#fff";
+        tc.textBaseline = "middle";
+        // Measure at full size first, then scale down if needed
+        tc.font = `${subFontSize}px ${_patternFontFamily}`;
+        const fullWidth = tc.measureText(subChars).width;
+        if (fullWidth > segW * 0.95) {
+          subFontSize = Math.floor(subFontSize * (segW * 0.95) / fullWidth);
+          tc.font = `${subFontSize}px ${_patternFontFamily}`;
+        }
+        // Repeat subtitle to fill the segment
+        const subReps = Math.max(1, Math.ceil(segW * 1.5 / tc.measureText(subChars + " ").width));
         const subText = (subChars + " ").repeat(subReps).trimEnd();
-        octx.fillText(subText, segStart + 2, offH / 2);
+        // Draw subtitle text into temp canvas
+        let subX = 2;
+        for (let char of subText) {
+          const charW = tc.measureText(char).width;
+          if (subX > segW) break;
+          tc.fillText(char, subX, offH / 2);
+          subX += charW;
+        }
+        // Draw temp canvas vertically flipped into the main strip at the bottom segment position.
+        // Only flip Y (not rotate 180°) so text stays left-to-right after the bottom edge's ny=-1 inversion.
+        octx.save();
+        octx.translate(segStart, offH);
+        octx.scale(1, -1);
+        octx.drawImage(tmpC, 0, 0);
         octx.restore();
       }
     }
