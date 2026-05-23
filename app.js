@@ -1301,19 +1301,21 @@ function getFrameWarpConfig() {
   // full rectangle for none). Each carries its inward normal (nx, ny).
   const segs = [];
   const fc = frameCx;
+  // `flip` re-orients a segment's letters so they read upright on that edge
+  // (used for the bottom edge, which would otherwise be upside-down on a path).
   if (state.mirrorMode === "horizontal") {
     segs.push({ x0: W/2, y0: fc,   x1: fc,   y1: fc,   nx:  0, ny:  1 }); // top (→left)
     segs.push({ x0: fc,  y0: fc,   x1: fc,   y1: H-fc, nx:  1, ny:  0 }); // left side
-    segs.push({ x0: fc,  y0: H-fc, x1: W/2,  y1: H-fc, nx:  0, ny: -1 }); // bottom (→right)
+    segs.push({ x0: fc,  y0: H-fc, x1: W/2,  y1: H-fc, nx:  0, ny: -1, flip: true }); // bottom (→right)
   } else if (state.mirrorMode === "vertical") {
     segs.push({ x0: fc,   y0: H/2, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (→top)
     segs.push({ x0: fc,   y0: fc,  x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
     segs.push({ x0: W-fc, y0: fc,  x1: W-fc, y1: H/2,  nx: -1, ny:  0 }); // right (→bottom)
   } else {
     segs.push({ x0: fc,   y0: fc,   x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
-    segs.push({ x0: W-fc, y0: fc,   x1: W-fc, y1: H-fc, nx: -1, ny:  0 }); // right
-    segs.push({ x0: W-fc, y0: H-fc, x1: fc,   y1: H-fc, nx:  0, ny: -1 }); // bottom
-    segs.push({ x0: fc,   y0: H-fc, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left
+    segs.push({ x0: W-fc, y0: fc,   x1: W-fc, y1: H-fc, nx: -1, ny:  0 }); // right (T→B)
+    segs.push({ x0: fc,   y0: H-fc, x1: W-fc, y1: H-fc, nx:  0, ny: -1, flip: true }); // bottom (L→R upright)
+    segs.push({ x0: fc,   y0: H-fc, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (B→T)
   }
   const segLens = segs.map((s) => Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
   const cumLens = segLens.reduce((acc, l) => { acc.push((acc[acc.length - 1] || 0) + l); return acc; }, []);
@@ -1326,9 +1328,10 @@ function getFrameWarpConfig() {
     const seg = segs[si];
     const segStart = si > 0 ? cumLens[si - 1] : 0;
     const t = segLens[si] > 0 ? (d - segStart) / segLens[si] : 0;
+    const sgn = seg.flip ? -1 : 1;
     return {
-      x: seg.x0 + (seg.x1 - seg.x0) * t + seg.nx * r,
-      y: seg.y0 + (seg.y1 - seg.y0) * t + seg.ny * r,
+      x: seg.x0 + (seg.x1 - seg.x0) * t + seg.nx * sgn * r,
+      y: seg.y0 + (seg.y1 - seg.y0) * t + seg.ny * sgn * r,
     };
   }
 
@@ -2689,7 +2692,8 @@ function warpStripToLayer(cfg) {
     const segStart = i > 0 ? cumLens[i - 1] : 0;
     const tx = (seg.x1 - seg.x0) / segLen;  // unit tangent
     const ty = (seg.y1 - seg.y0) / segLen;
-    const nx = seg.nx, ny = seg.ny;         // unit inward normal
+    const sgn = seg.flip ? -1 : 1;
+    const nx = seg.nx * sgn, ny = seg.ny * sgn; // inward normal (flipped for upright edges)
     lctx.save();
     lctx.setTransform(
       tx * px, ty * px,
@@ -2796,7 +2800,6 @@ function draw() {
 
   ctx.fillStyle = hexToRgba(state.bgColor, state.bgAlpha);
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawGuideCircles();
   drawGlassPolishFx();
 
   // In text-as-stroke mode the visible frame is the clean glyph fill; the raw
@@ -2811,11 +2814,7 @@ function draw() {
     }
   }
   drawTextFrame();
-  drawEdgeLightShadowFx();
   drawBubbleBlurFx();
-  drawEmbossFx();
-  drawHalftoneNoiseFx();
-  drawCrayonPaperTexture();
   drawAudioTravellers();
 
   drawTextReference();
@@ -3319,36 +3318,12 @@ function bindControls() {
   document.getElementById("applyTextSeed").addEventListener("click", () => {
     buildPattern();
   });
-  document.getElementById("crayonToggle").addEventListener("change", (event) => {
-    state.crayonEffect = event.target.checked;
-    state.fxWaxTexture = event.target.checked;
-    document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
-    draw();
-  });
-  document.getElementById("fxWaxToggle").addEventListener("change", (event) => {
-    state.fxWaxTexture = event.target.checked;
-    state.crayonEffect = state.fxWaxTexture;
-    document.getElementById("crayonToggle").checked = state.fxWaxTexture;
-    draw();
-  });
-  document.getElementById("fxEdgeToggle").addEventListener("change", (event) => {
-    state.fxEdgeLightShadow = event.target.checked;
-    draw();
-  });
   document.getElementById("fxBubbleToggle").addEventListener("change", (event) => {
     state.fxBubbleBlur = event.target.checked;
     draw();
   });
   document.getElementById("fxGlassToggle").addEventListener("change", (event) => {
     state.fxGlassPolish = event.target.checked;
-    draw();
-  });
-  document.getElementById("fxEmbossToggle").addEventListener("change", (event) => {
-    state.fxEmbossDepth = event.target.checked;
-    draw();
-  });
-  document.getElementById("fxHalftoneToggle").addEventListener("change", (event) => {
-    state.fxHalftoneNoise = event.target.checked;
     draw();
   });
 
@@ -3381,14 +3356,6 @@ function bindControls() {
   document.getElementById("startFromBottomToggle").addEventListener("change", (event) => {
     state.startFromBottom = event.target.checked;
     buildPattern();
-  });
-  document.getElementById("circleScaffoldToggle").addEventListener("change", (event) => {
-    state.useCircleScaffold = event.target.checked;
-    buildPattern();
-  });
-  document.getElementById("showGuidesToggle").addEventListener("change", (event) => {
-    state.showGuides = event.target.checked;
-    draw();
   });
   document.getElementById("bgUpload").addEventListener("change", handleBackgroundUpload);
   document.getElementById("clearBg").addEventListener("click", clearBackgroundImage);
@@ -3449,25 +3416,16 @@ function bindControls() {
 
 applyColorPreset(state.colorChoice);
 document.getElementById("startFromBottomToggle").checked = state.startFromBottom;
-document.getElementById("circleScaffoldToggle").checked = state.useCircleScaffold;
-document.getElementById("showGuidesToggle").checked = state.showGuides;
 document.getElementById("textSeedToggle").checked = state.useTextSeed;
 document.getElementById("textReferenceToggle").checked = state.showTextReference;
 document.getElementById("textAsStrokeToggle").checked = state.textAsStroke;
 document.getElementById("textColorInput").value = state.textColor;
 document.getElementById("textSeedInput").value = state.textSeedValue;
 document.getElementById("subtitleInput").value = state.subtitleValue;
-state.crayonEffect = state.fxWaxTexture;
-state.crayonStrength = state.fxWaxStrength;
-document.getElementById("crayonToggle").checked = state.fxWaxTexture;
-document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
-document.getElementById("fxEdgeToggle").checked = state.fxEdgeLightShadow;
 document.getElementById("fxBubbleToggle").checked = state.fxBubbleBlur;
 document.getElementById("fxGlassToggle").checked = state.fxGlassPolish;
 document.getElementById("fxPatternColorInput").value = state.strokeColor;
 document.getElementById("fxBubbleColorInput").value = state.fxBubbleGlowColor;
-document.getElementById("fxEmbossToggle").checked = state.fxEmbossDepth;
-document.getElementById("fxHalftoneToggle").checked = state.fxHalftoneNoise;
 document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
   radio.checked = radio.value === state.mirrorMode;
 });
