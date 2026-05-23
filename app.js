@@ -2748,7 +2748,6 @@ function draw() {
 
   ctx.fillStyle = hexToRgba(state.bgColor, state.bgAlpha);
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawGuideCircles();
   drawGlassPolishFx();
 
   // In text-as-stroke mode the visible frame is the clean glyph fill; the raw
@@ -2763,11 +2762,7 @@ function draw() {
     }
   }
   drawTextFrame();
-  drawEdgeLightShadowFx();
   drawBubbleBlurFx();
-  drawEmbossFx();
-  drawHalftoneNoiseFx();
-  drawCrayonPaperTexture();
   drawAudioTravellers();
 
   drawTextReference();
@@ -3271,36 +3266,12 @@ function bindControls() {
   document.getElementById("applyTextSeed").addEventListener("click", () => {
     buildPattern();
   });
-  document.getElementById("crayonToggle").addEventListener("change", (event) => {
-    state.crayonEffect = event.target.checked;
-    state.fxWaxTexture = event.target.checked;
-    document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
-    draw();
-  });
-  document.getElementById("fxWaxToggle").addEventListener("change", (event) => {
-    state.fxWaxTexture = event.target.checked;
-    state.crayonEffect = state.fxWaxTexture;
-    document.getElementById("crayonToggle").checked = state.fxWaxTexture;
-    draw();
-  });
-  document.getElementById("fxEdgeToggle").addEventListener("change", (event) => {
-    state.fxEdgeLightShadow = event.target.checked;
-    draw();
-  });
   document.getElementById("fxBubbleToggle").addEventListener("change", (event) => {
     state.fxBubbleBlur = event.target.checked;
     draw();
   });
   document.getElementById("fxGlassToggle").addEventListener("change", (event) => {
     state.fxGlassPolish = event.target.checked;
-    draw();
-  });
-  document.getElementById("fxEmbossToggle").addEventListener("change", (event) => {
-    state.fxEmbossDepth = event.target.checked;
-    draw();
-  });
-  document.getElementById("fxHalftoneToggle").addEventListener("change", (event) => {
-    state.fxHalftoneNoise = event.target.checked;
     draw();
   });
 
@@ -3333,14 +3304,6 @@ function bindControls() {
   document.getElementById("startFromBottomToggle").addEventListener("change", (event) => {
     state.startFromBottom = event.target.checked;
     buildPattern();
-  });
-  document.getElementById("circleScaffoldToggle").addEventListener("change", (event) => {
-    state.useCircleScaffold = event.target.checked;
-    buildPattern();
-  });
-  document.getElementById("showGuidesToggle").addEventListener("change", (event) => {
-    state.showGuides = event.target.checked;
-    draw();
   });
   document.getElementById("bgUpload").addEventListener("change", handleBackgroundUpload);
   document.getElementById("clearBg").addEventListener("click", clearBackgroundImage);
@@ -3401,25 +3364,16 @@ function bindControls() {
 
 applyColorPreset(state.colorChoice);
 document.getElementById("startFromBottomToggle").checked = state.startFromBottom;
-document.getElementById("circleScaffoldToggle").checked = state.useCircleScaffold;
-document.getElementById("showGuidesToggle").checked = state.showGuides;
 document.getElementById("textSeedToggle").checked = state.useTextSeed;
 document.getElementById("textReferenceToggle").checked = state.showTextReference;
 document.getElementById("textAsStrokeToggle").checked = state.textAsStroke;
 document.getElementById("textColorInput").value = state.textColor;
 document.getElementById("textSeedInput").value = state.textSeedValue;
 document.getElementById("subtitleInput").value = state.subtitleValue;
-state.crayonEffect = state.fxWaxTexture;
-state.crayonStrength = state.fxWaxStrength;
-document.getElementById("crayonToggle").checked = state.fxWaxTexture;
-document.getElementById("fxWaxToggle").checked = state.fxWaxTexture;
-document.getElementById("fxEdgeToggle").checked = state.fxEdgeLightShadow;
 document.getElementById("fxBubbleToggle").checked = state.fxBubbleBlur;
 document.getElementById("fxGlassToggle").checked = state.fxGlassPolish;
 document.getElementById("fxPatternColorInput").value = state.strokeColor;
 document.getElementById("fxBubbleColorInput").value = state.fxBubbleGlowColor;
-document.getElementById("fxEmbossToggle").checked = state.fxEmbossDepth;
-document.getElementById("fxHalftoneToggle").checked = state.fxHalftoneNoise;
 document.querySelectorAll("input[name='mirrorMode']").forEach((radio) => {
   radio.checked = radio.value === state.mirrorMode;
 });
