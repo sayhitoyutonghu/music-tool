@@ -35,6 +35,7 @@ const state = {
   useCircleScaffold: true,
   showGuides: false,
   textSeedValue: "",
+  subtitleValue: "",
   useTextSeed: true,
   showTextReference: false,
   textAsStroke: true,
@@ -1287,8 +1288,10 @@ function getFrameWarpConfig() {
   const minSide = Math.min(W, H);
 
   // Frame band: the ribbon around the canvas edges within which letters live.
-  const bandDepth = minSide * 0.17;                   // radial thickness of the ribbon
-  const frameCx = minSide * 0.07 + bandDepth * 0.5;   // centreline inset from edge
+  const bandDepth = minSide * 0.21;                   // radial thickness (bigger frame)
+  // Centreline kept close to the edge so the letter ink reaches near the border.
+  // Pattern Padding pushes it inward when you want more breathing room.
+  const frameCx = minSide * 0.02 + getPatternSafeMarginPx() + bandDepth * 0.31; // centreline inset
   const fontSize = clamp(bandDepth * 0.90, 52, minSide * 0.24);
 
   // Perimeter segments (left half for horizontal mirror, top half for vertical,
@@ -1332,7 +1335,12 @@ function getFrameWarpConfig() {
   const displayText = (rawChars + " ").repeat(repeats).trimEnd();
   const offW = Math.ceil(totalLen);
 
+  const subtitleRaw = (state.subtitleValue || "").trim();
+  const subChars = [...subtitleRaw].filter((c) => c.trim()).join("");
+
   // Render the repeated text into a horizontal strip the width of the perimeter.
+  // The title fills the whole frame; an optional subtitle replaces the BOTTOM edge
+  // so the top/sides + bottom together compose the complete frame.
   function renderStrip() {
     const off = document.createElement("canvas");
     off.width = offW; off.height = offH;
@@ -1341,6 +1349,27 @@ function getFrameWarpConfig() {
     octx.fillStyle = "#fff";
     octx.textBaseline = "middle";
     octx.fillText(displayText, 2, offH / 2);
+
+    // Override the bottom-edge segment(s) with the subtitle text.
+    if (subChars) {
+      for (let i = 0; i < segs.length; i++) {
+        const seg = segs[i];
+        const isBottom = Math.abs(seg.y0 - (H - frameCx)) < 1 && Math.abs(seg.y1 - (H - frameCx)) < 1;
+        if (!isBottom) continue;
+        const segStart = i > 0 ? cumLens[i - 1] : 0;
+        const segEnd = cumLens[i];
+        const segW = segEnd - segStart;
+        octx.save();
+        octx.beginPath();
+        octx.rect(segStart, 0, segW, offH);
+        octx.clip();
+        octx.clearRect(segStart, 0, segW, offH);
+        const subReps = Math.max(1, Math.ceil(segW * 1.1 / (estCharW * subChars.length)));
+        const subText = (subChars + " ").repeat(subReps).trimEnd();
+        octx.fillText(subText, segStart + 2, offH / 2);
+        octx.restore();
+      }
+    }
     return { canvas: off, ctx: octx };
   }
 
@@ -3205,6 +3234,15 @@ function bindControls() {
     buildPattern();
   });
 
+  document.getElementById("subtitleInput").addEventListener("input", (event) => {
+    state.subtitleValue = event.target.value;
+  });
+  document.getElementById("subtitleInput").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    buildPattern();
+  });
+
   document.getElementById("textSeedToggle").addEventListener("change", (event) => {
     state.useTextSeed = event.target.checked;
     updateTextSeedMeta(state.textSeedValue);
@@ -3366,6 +3404,7 @@ document.getElementById("textReferenceToggle").checked = state.showTextReference
 document.getElementById("textAsStrokeToggle").checked = state.textAsStroke;
 document.getElementById("textColorInput").value = state.textColor;
 document.getElementById("textSeedInput").value = state.textSeedValue;
+document.getElementById("subtitleInput").value = state.subtitleValue;
 state.crayonEffect = state.fxWaxTexture;
 state.crayonStrength = state.fxWaxStrength;
 document.getElementById("crayonToggle").checked = state.fxWaxTexture;
