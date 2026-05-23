@@ -1297,49 +1297,117 @@ function getFrameWarpConfig() {
   const subtitleRaw = (state.subtitleValue || "").trim();
   const subChars = subtitleRaw;
 
-  // Perimeter segments (left half for horizontal mirror, top half for vertical,
-  // full rectangle for none). Each carries its inward normal (nx, ny).
-  const segs = [];
+  const offH = Math.ceil(bandDepth * 1.25);
+
+  // Perimeter as a polyline of waypoints; interior corners become rounded
+  // quarter-arcs so the text ribbon flows continuously around them instead of
+  // being chopped where two straight edges meet at 90°. `flip` re-orients a
+  // segment's letters so they read upright on edges that would otherwise invert.
   const fc = frameCx;
-  // `flip` re-orients a segment's letters so they read upright on that edge
-  // (used for the bottom edge, which would otherwise be upside-down on a path).
+  let waypoints, edgeFlip, closed;
+  // No per-edge flip: letters keep "tops outward" all the way around, so the
+  // ribbon rotates continuously through every corner with no reflection seam.
+  // (The bottom decorative swirls read upside-down, which is fine for abstract
+  // calligraphy; the readable subtitle gets its own upright flip below.)
   if (state.mirrorMode === "horizontal") {
-    segs.push({ x0: W/2, y0: fc,   x1: fc,   y1: fc,   nx:  0, ny:  1 }); // top (→left)
-    segs.push({ x0: fc,  y0: fc,   x1: fc,   y1: H-fc, nx:  1, ny:  0 }); // left side
-    segs.push({ x0: fc,  y0: H-fc, x1: W/2,  y1: H-fc, nx:  0, ny: -1, flip: true }); // bottom (→right)
+    waypoints = [ {x:W/2,y:fc}, {x:fc,y:fc}, {x:fc,y:H-fc}, {x:W/2,y:H-fc} ]; // top→left→bottom
+    edgeFlip  = [ false, false, false ];
+    closed = false;
   } else if (state.mirrorMode === "vertical") {
-    segs.push({ x0: fc,   y0: H/2, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (→top)
-    segs.push({ x0: fc,   y0: fc,  x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
-    segs.push({ x0: W-fc, y0: fc,  x1: W-fc, y1: H/2,  nx: -1, ny:  0 }); // right (→bottom)
+    waypoints = [ {x:fc,y:H/2}, {x:fc,y:fc}, {x:W-fc,y:fc}, {x:W-fc,y:H/2} ]; // left→top→right
+    edgeFlip  = [ false, false, false ];
+    closed = false;
   } else {
-    segs.push({ x0: fc,   y0: fc,   x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
-    segs.push({ x0: W-fc, y0: fc,   x1: W-fc, y1: H-fc, nx: -1, ny:  0 }); // right (T→B)
-    segs.push({ x0: fc,   y0: H-fc, x1: W-fc, y1: H-fc, nx:  0, ny: -1, flip: true }); // bottom (L→R upright)
-    segs.push({ x0: fc,   y0: H-fc, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (B→T)
+    waypoints = [ {x:fc,y:fc}, {x:W-fc,y:fc}, {x:W-fc,y:H-fc}, {x:fc,y:H-fc} ]; // CW loop
+    edgeFlip  = [ false, false, false, false ];
+    closed = true;
   }
-  const segLens = segs.map((s) => Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
+
+  // Corner radius: large enough that the inner band radius stays positive
+  // (no fold), and small enough to fit on the shortest rounded edge.
+  let shortestEdge = Infinity;
+  const edgeN = closed ? waypoints.length : waypoints.length - 1;
+  for (let i = 0; i < edgeN; i++) {
+    const a = waypoints[i], b = waypoints[(i + 1) % waypoints.length];
+    shortestEdge = Math.min(shortestEdge, Math.hypot(b.x - a.x, b.y - a.y));
+  }
+  const cornerR = clamp(bandDepth * 1.05, offH * 0.55, shortestEdge * 0.42);
+
+  // Build line + arc segments with rounded corners.
+  const segs = [];
+  const edges = [];
+  for (let i = 0; i < edgeN; i++) {
+    const a = waypoints[i], b = waypoints[(i + 1) % waypoints.length];
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const tx = (b.x - a.x) / L, ty = (b.y - a.y) / L;
+    let nx = -ty, ny = tx; // inward normal (toward canvas centre)
+    if (nx * (W / 2 - a.x) + ny * (H / 2 - a.y) < 0) { nx = -nx; ny = -ny; }
+    edges.push({ a, b, tx, ty, nx, ny, flip: edgeFlip[i] });
+  }
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i];
+    const startCorner = closed || i > 0;
+    const endCorner = closed || i < edges.length - 1;
+    let x0 = e.a.x, y0 = e.a.y, x1 = e.b.x, y1 = e.b.y;
+    if (startCorner) { x0 += e.tx * cornerR; y0 += e.ty * cornerR; }
+    if (endCorner)   { x1 -= e.tx * cornerR; y1 -= e.ty * cornerR; }
+    segs.push({ type: "line", x0, y0, x1, y1, nx: e.nx, ny: e.ny, flip: e.flip });
+    if (endCorner) {
+      const next = edges[(i + 1) % edges.length];
+      const V = e.b;
+      const A = { x: V.x - e.tx * cornerR, y: V.y - e.ty * cornerR }; // arc start
+      const C = { x: A.x + e.nx * cornerR, y: A.y + e.ny * cornerR }; // arc centre
+      const Bp = { x: V.x + next.tx * cornerR, y: V.y + next.ty * cornerR }; // arc end
+      const a0 = Math.atan2(A.y - C.y, A.x - C.x);
+      let dA = Math.atan2(Bp.y - C.y, Bp.x - C.x) - a0;
+      while (dA > Math.PI) dA -= 2 * Math.PI;
+      while (dA < -Math.PI) dA += 2 * Math.PI;
+      segs.push({ type: "arc", cx: C.x, cy: C.y, R: cornerR, a0, a1: a0 + dA, flip: e.flip });
+    }
+  }
+
+  const segLens = segs.map((s) =>
+    s.type === "arc" ? s.R * Math.abs(s.a1 - s.a0) : Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
   const cumLens = segLens.reduce((acc, l) => { acc.push((acc[acc.length - 1] || 0) + l); return acc; }, []);
   const totalLen = cumLens[cumLens.length - 1];
 
-  function perimToWorld(d, r) {
+  // Sample the centreline at arc-distance `d` → world position, unit tangent,
+  // and inward normal (works for both straight and arc segments).
+  function sampleAt(d) {
     d = clamp(d, 0, totalLen * 0.9999);
     let si = 0;
     while (si < segs.length - 1 && cumLens[si] < d) si++;
     const seg = segs[si];
     const segStart = si > 0 ? cumLens[si - 1] : 0;
     const t = segLens[si] > 0 ? (d - segStart) / segLens[si] : 0;
-    const sgn = seg.flip ? -1 : 1;
-    return {
-      x: seg.x0 + (seg.x1 - seg.x0) * t + seg.nx * sgn * r,
-      y: seg.y0 + (seg.y1 - seg.y0) * t + seg.ny * sgn * r,
-    };
+    if (seg.type === "arc") {
+      const a = seg.a0 + (seg.a1 - seg.a0) * t;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      const dir = seg.a1 >= seg.a0 ? 1 : -1;
+      return { x: seg.cx + seg.R * ca, y: seg.cy + seg.R * sa,
+        nx: -ca, ny: -sa, tx: -sa * dir, ty: ca * dir, flip: seg.flip };
+    }
+    const L = Math.hypot(seg.x1 - seg.x0, seg.y1 - seg.y0) || 1;
+    return { x: seg.x0 + (seg.x1 - seg.x0) * t, y: seg.y0 + (seg.y1 - seg.y0) * t,
+      nx: seg.nx, ny: seg.ny, tx: (seg.x1 - seg.x0) / L, ty: (seg.y1 - seg.y0) / L, flip: seg.flip };
   }
 
-  const offH = Math.ceil(bandDepth * 1.25);
-  const estCharW = fontSize * 0.58;
-  const repeats = Math.max(1, Math.ceil(totalLen * 1.05 / (estCharW * rawChars.length)));
-  const displayText = (rawChars + " ").repeat(repeats).trimEnd();
+  function perimToWorld(d, r) {
+    const s = sampleAt(d);
+    const sgn = s.flip ? -1 : 1;
+    return { x: s.x + s.nx * sgn * r, y: s.y + s.ny * sgn * r };
+  }
+
   const offW = Math.ceil(totalLen);
+  // Measure the real glyph width in the decorative font (variable-width cursive)
+  // so the repeated text reliably OVERFILLS the perimeter. Estimating from
+  // fontSize underfills with narrow scripts, leaving a blank patch at the strip's
+  // end that surfaces as a gap/notch where the mirrored halves meet.
+  const _measCanvas = document.createElement("canvas").getContext("2d");
+  _measCanvas.font = `${fontSize}px ${_patternFontFamily}`;
+  const _unitW = Math.max(1, _measCanvas.measureText(rawChars + " ").width);
+  const repeats = Math.max(1, Math.ceil((totalLen * 1.15) / _unitW));
+  const displayText = (rawChars + " ").repeat(repeats).trimEnd();
 
   // Render the repeated text into a horizontal strip the width of the perimeter.
   // The title fills the whole frame; an optional subtitle replaces the BOTTOM edge
@@ -1430,7 +1498,7 @@ function getFrameWarpConfig() {
 
   return {
     W, H, minSide, bandDepth, frameCx, fontSize,
-    segs, segLens, cumLens, totalLen, perimToWorld,
+    segs, segLens, cumLens, totalLen, perimToWorld, sampleAt,
     offW, offH, displayText, renderStrip,
   };
 }
@@ -1987,6 +2055,26 @@ function paintPathMask(targetCtx, widthScale = 1, expandPx = 0, alpha = 1) {
   targetCtx.restore();
 }
 
+// Clip/coverage mask for path-tracing FX. In text-frame mode this is the smooth
+// anti-aliased glyph silhouette (optionally fattened) so textures and shadows hug
+// the clean letterforms; otherwise it strokes the coarse traced contour paths,
+// whose ~8px-grid points stair-step under blur on light backgrounds.
+function paintFxClipMask(targetCtx, widthScale = 1, expandPx = 0, fattenPx = 0) {
+  const m = getTextFrameMask();
+  if (m) {
+    targetCtx.save();
+    if (fattenPx > 0.5) {
+      targetCtx.filter = `blur(${fattenPx.toFixed(2)}px)`;
+      for (let i = 0; i < 4; i += 1) targetCtx.drawImage(m, 0, 0);
+      targetCtx.filter = "none";
+    }
+    targetCtx.drawImage(m, 0, 0);
+    targetCtx.restore();
+    return;
+  }
+  drawPathMask(targetCtx, widthScale, expandPx);
+}
+
 function createFxCanvas(scale = 1) {
   const fxCanvas = document.createElement("canvas");
   fxCanvas.width = Math.max(1, Math.round(canvas.width * scale));
@@ -2211,6 +2299,36 @@ function drawEdgeLightShadowFx() {
   const blur = 0.8 + amount * 4.8;
   const light = mixRgb(state.strokeColor, "#ffffff", 0.8);
 
+  // Text-frame mode: build the soft highlight + shadow from offset, blurred copies
+  // of the smooth glyph silhouette, so the foggy edge hugs the clean letterforms
+  // (no messy gray lines tracing the coarse contour paths, no stair-stepped blur).
+  const glyphMask = getTextFrameMask();
+  if (glyphMask) {
+    const offsetCopy = (offX, offY, blurPx, color) => {
+      const c = document.createElement("canvas");
+      c.width = canvas.width; c.height = canvas.height;
+      const cx = c.getContext("2d");
+      cx.filter = `blur(${blurPx.toFixed(2)}px)`;
+      cx.drawImage(glyphMask, offX, offY);
+      cx.filter = "none";
+      tintLayer(c, color);
+      return c;
+    };
+    const lightLayer = offsetCopy(-lightOffset, -lightOffset, blur, rgbToRgba(light, 1));
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = clamp((0.1 + amount * 0.36) * state.strokeAlpha, 0, 1);
+    ctx.drawImage(lightLayer, 0, 0);
+    ctx.restore();
+    const shadowLayer = offsetCopy(lightOffset, lightOffset, blur * 0.92, "#000000");
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = clamp((0.08 + amount * 0.32) * state.strokeAlpha, 0, 1);
+    ctx.drawImage(shadowLayer, 0, 0);
+    ctx.restore();
+    return;
+  }
+
   ctx.save();
   ctx.globalCompositeOperation = "screen";
   forEachPathSegment((points, width, progress) => {
@@ -2261,6 +2379,35 @@ function edgeBandMask(S, inv, scale, radius) {
   return c;
 }
 
+// Full-canvas white silhouette of the warped glyph frame (mirrored to match the
+// visible frame), cached across animation frames. Used as the FX silhouette
+// source in text-frame mode so the glass/bubble edges trace the SAME smooth
+// anti-aliased glyph shapes as the visible frame — not the coarse traced
+// contour paths, which snap to a ~8px grid and look pixelated.
+let _textFrameMaskCanvas = null;
+let _textFrameMaskSig = "";
+function getTextFrameMask() {
+  if (!(state.useTextSeed && state.textAsStroke && state.textSeedValue.trim())) return null;
+  const sig = [state.mirrorMode, state.textSeedValue, state.subtitleValue,
+    canvas.width, canvas.height, _patternFontFamily].join("|");
+  if (_textFrameMaskCanvas && _textFrameMaskSig === sig) return _textFrameMaskCanvas;
+  const cfg = getFrameWarpConfig();
+  if (!cfg) return null;
+  const base = warpStripToLayer(cfg); // white glyphs, base half
+  const full = document.createElement("canvas");
+  full.width = canvas.width; full.height = canvas.height;
+  const fx = full.getContext("2d");
+  fx.drawImage(base, 0, 0);
+  if (state.mirrorMode === "horizontal") {
+    fx.save(); fx.translate(canvas.width, 0); fx.scale(-1, 1); fx.drawImage(base, 0, 0); fx.restore();
+  } else if (state.mirrorMode === "vertical") {
+    fx.save(); fx.translate(0, canvas.height); fx.scale(1, -1); fx.drawImage(base, 0, 0); fx.restore();
+  }
+  _textFrameMaskCanvas = full;
+  _textFrameMaskSig = sig;
+  return full;
+}
+
 // White anti-aliased silhouette of the pattern (merged into blobs) and its inverse.
 // `mergeR` (scaled px) closes thin necks between nearby blobs metaball-style:
 // blur spreads the field, then re-stacking re-densifies it so adjacent shapes
@@ -2268,10 +2415,24 @@ function edgeBandMask(S, inv, scale, radius) {
 function buildBubbleSilhouette(scale, expandPx, mergeR = 0) {
   const raw = createFxCanvas(scale);
   const rctx = raw.getContext("2d");
-  rctx.save();
-  rctx.scale(scale, scale);
-  paintPathMask(rctx, 1, expandPx);
-  rctx.restore();
+  const textMask = getTextFrameMask();
+  if (textMask) {
+    // Smooth source: the actual warped glyph silhouette. Fatten by expandPx via
+    // a blur+restack so the glass body wraps the ink edge cleanly.
+    rctx.save();
+    if (expandPx > 0.5) {
+      rctx.filter = `blur(${(expandPx * scale).toFixed(2)}px)`;
+      for (let i = 0; i < 4; i++) rctx.drawImage(textMask, 0, 0, raw.width, raw.height);
+      rctx.filter = "none";
+    }
+    rctx.drawImage(textMask, 0, 0, raw.width, raw.height);
+    rctx.restore();
+  } else {
+    rctx.save();
+    rctx.scale(scale, scale);
+    paintPathMask(rctx, 1, expandPx);
+    rctx.restore();
+  }
 
   let S = raw;
   if (mergeR > 0.5) {
@@ -2471,7 +2632,7 @@ function drawHalftoneNoiseFx() {
   maskCanvas.width = canvas.width;
   maskCanvas.height = canvas.height;
   const mctx = maskCanvas.getContext("2d");
-  drawPathMask(mctx, 1.36);
+  paintFxClipMask(mctx, 1.36, 0, Math.min(canvas.width, canvas.height) * 0.004);
 
   const layer = document.createElement("canvas");
   layer.width = canvas.width;
@@ -2534,7 +2695,7 @@ function drawCrayonPaperTexture() {
 
   const maskCanvas = createFxCanvas();
   const mctx = maskCanvas.getContext("2d");
-  drawPathMask(mctx, 1.48 + rough * 0.38, 0.8 + rough * 2.6);
+  paintFxClipMask(mctx, 1.48 + rough * 0.38, 0.8 + rough * 2.6, Math.min(w, h) * 0.006);
   tctx.globalCompositeOperation = "destination-in";
   tctx.drawImage(maskCanvas, 0, 0);
 
@@ -2677,7 +2838,7 @@ function drawAudioTravellers() {
 // so one setTransform per segment reproduces it exactly. Returns a canvas
 // holding the warped white glyphs (base half only — caller mirrors).
 function warpStripToLayer(cfg) {
-  const { segs, segLens, cumLens, offH, renderStrip } = cfg;
+  const { offH, totalLen, sampleAt, renderStrip } = cfg;
   const strip = renderStrip().canvas;
   const layer = document.createElement("canvas");
   layer.width = canvas.width;
@@ -2685,24 +2846,27 @@ function warpStripToLayer(cfg) {
   const lctx = layer.getContext("2d");
   const px = canvas.width / state.canvasWidth; // device-pixel scale (usually 1)
 
-  for (let i = 0; i < segs.length; i++) {
-    const seg = segs[i];
-    const segLen = segLens[i];
-    if (segLen < 1) continue;
-    const segStart = i > 0 ? cumLens[i - 1] : 0;
-    const tx = (seg.x1 - seg.x0) / segLen;  // unit tangent
-    const ty = (seg.y1 - seg.y0) / segLen;
-    const sgn = seg.flip ? -1 : 1;
-    const nx = seg.nx * sgn, ny = seg.ny * sgn; // inward normal (flipped for upright edges)
-    lctx.save();
+  // Draw the strip in thin slices stepping along the perimeter. Each slice is
+  // oriented by the tangent/normal sampled at its centre, so on rounded corners
+  // the slices fan smoothly around the bend instead of being chopped at a 90°
+  // joint. Straight runs render identically to a single affine.
+  const stepW = 3;        // strip-x advance per slice (world px)
+  const overlap = 0.8;    // overdraw to hide hairline seams between slices
+  for (let d = 0; d < totalLen; d += stepW) {
+    const sliceW = Math.min(stepW, totalLen - d);
+    if (sliceW <= 0) break;
+    const s = sampleAt(d + sliceW / 2);
+    const sgn = s.flip ? -1 : 1;
+    const nx = s.nx * sgn, ny = s.ny * sgn;
+    const p0x = s.x - s.tx * (sliceW / 2); // centreline at strip x = d
+    const p0y = s.y - s.ty * (sliceW / 2);
     lctx.setTransform(
-      tx * px, ty * px,
+      s.tx * px, s.ty * px,
       nx * px, ny * px,
-      (seg.x0 - tx * segStart - nx * offH / 2) * px,
-      (seg.y0 - ty * segStart - ny * offH / 2) * px,
+      (p0x - s.tx * d - nx * offH / 2) * px,
+      (p0y - s.ty * d - ny * offH / 2) * px,
     );
-    lctx.drawImage(strip, segStart, 0, segLen, offH, segStart, 0, segLen, offH);
-    lctx.restore();
+    lctx.drawImage(strip, d, 0, sliceW + overlap, offH, d, 0, sliceW + overlap, offH);
   }
   lctx.setTransform(1, 0, 0, 1, 0, 0);
   return layer;
@@ -2814,7 +2978,11 @@ function draw() {
     }
   }
   drawTextFrame();
+  drawEdgeLightShadowFx();
   drawBubbleBlurFx();
+  drawEmbossFx();
+  drawHalftoneNoiseFx();
+  drawCrayonPaperTexture();
   drawAudioTravellers();
 
   drawTextReference();
