@@ -1298,19 +1298,21 @@ function getFrameWarpConfig() {
   // full rectangle for none). Each carries its inward normal (nx, ny).
   const segs = [];
   const fc = frameCx;
+  // `flip` re-orients a segment's letters so they read upright on that edge
+  // (used for the bottom edge, which would otherwise be upside-down on a path).
   if (state.mirrorMode === "horizontal") {
     segs.push({ x0: W/2, y0: fc,   x1: fc,   y1: fc,   nx:  0, ny:  1 }); // top (→left)
     segs.push({ x0: fc,  y0: fc,   x1: fc,   y1: H-fc, nx:  1, ny:  0 }); // left side
-    segs.push({ x0: fc,  y0: H-fc, x1: W/2,  y1: H-fc, nx:  0, ny: -1 }); // bottom (→right)
+    segs.push({ x0: fc,  y0: H-fc, x1: W/2,  y1: H-fc, nx:  0, ny: -1, flip: true }); // bottom (→right)
   } else if (state.mirrorMode === "vertical") {
     segs.push({ x0: fc,   y0: H/2, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (→top)
     segs.push({ x0: fc,   y0: fc,  x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
     segs.push({ x0: W-fc, y0: fc,  x1: W-fc, y1: H/2,  nx: -1, ny:  0 }); // right (→bottom)
   } else {
     segs.push({ x0: fc,   y0: fc,   x1: W-fc, y1: fc,   nx:  0, ny:  1 }); // top
-    segs.push({ x0: W-fc, y0: fc,   x1: W-fc, y1: H-fc, nx: -1, ny:  0 }); // right
-    segs.push({ x0: W-fc, y0: H-fc, x1: fc,   y1: H-fc, nx:  0, ny: -1 }); // bottom
-    segs.push({ x0: fc,   y0: H-fc, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left
+    segs.push({ x0: W-fc, y0: fc,   x1: W-fc, y1: H-fc, nx: -1, ny:  0 }); // right (T→B)
+    segs.push({ x0: fc,   y0: H-fc, x1: W-fc, y1: H-fc, nx:  0, ny: -1, flip: true }); // bottom (L→R upright)
+    segs.push({ x0: fc,   y0: H-fc, x1: fc,   y1: fc,   nx:  1, ny:  0 }); // left (B→T)
   }
   const segLens = segs.map((s) => Math.hypot(s.x1 - s.x0, s.y1 - s.y0));
   const cumLens = segLens.reduce((acc, l) => { acc.push((acc[acc.length - 1] || 0) + l); return acc; }, []);
@@ -1323,9 +1325,10 @@ function getFrameWarpConfig() {
     const seg = segs[si];
     const segStart = si > 0 ? cumLens[si - 1] : 0;
     const t = segLens[si] > 0 ? (d - segStart) / segLens[si] : 0;
+    const sgn = seg.flip ? -1 : 1;
     return {
-      x: seg.x0 + (seg.x1 - seg.x0) * t + seg.nx * r,
-      y: seg.y0 + (seg.y1 - seg.y0) * t + seg.ny * r,
+      x: seg.x0 + (seg.x1 - seg.x0) * t + seg.nx * sgn * r,
+      y: seg.y0 + (seg.y1 - seg.y0) * t + seg.ny * sgn * r,
     };
   }
 
@@ -2637,7 +2640,8 @@ function warpStripToLayer(cfg) {
     const segStart = i > 0 ? cumLens[i - 1] : 0;
     const tx = (seg.x1 - seg.x0) / segLen;  // unit tangent
     const ty = (seg.y1 - seg.y0) / segLen;
-    const nx = seg.nx, ny = seg.ny;         // unit inward normal
+    const sgn = seg.flip ? -1 : 1;
+    const nx = seg.nx * sgn, ny = seg.ny * sgn; // inward normal (flipped for upright edges)
     lctx.save();
     lctx.setTransform(
       tx * px, ty * px,
