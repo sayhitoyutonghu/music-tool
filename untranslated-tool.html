@@ -29,6 +29,7 @@
     }
     #panel textarea { resize: vertical; min-height: 48px; }
     #panel input[type=file] { width: 100%; font-size: 11px; color: #bbb; }
+    #panel .audio-status { font-size: 11px; color: #8fb0c8; margin-top: 8px; line-height: 1.4; word-break: break-word; }
     #panel input[type=file]::file-selector-button {
       background: #2a2a2a; border: 1px solid #3a3a3a; color: #eee;
       padding: 5px 10px; border-radius: 5px; margin-right: 8px; cursor: pointer; font-size: 11px;
@@ -214,6 +215,7 @@
     </div>
     <button data-action="playAudio">Play / Pause Audio</button>
     <button class="secondary" data-action="checkStatus">Check Audio Status</button>
+    <div id="audioStatus" class="audio-status">Waiting for audio…</div>
 
     <hr>
 
@@ -461,6 +463,7 @@
     {
       // @clay-no-bg-control
 const canvasEl = canvas;
+const _audioStatusEl = document.getElementById('audioStatus');
 let w, h;
 let particles = [];
 let particleBounds = null;
@@ -584,7 +587,7 @@ controls.onAction('recordVideo', () => {
         alert('Screen recording not supported in this browser.');
         return;
     }
-    // Include the playing audio track if the audio graph is live.
+    // Include the playing file audio in the recording, if the graph is live.
     if (audioContext && audioSourceNode) {
         try {
             const dest = audioContext.createMediaStreamDestination();
@@ -976,6 +979,10 @@ function draw() {
     const textColor = controls.get('textColor') || '#BDC273';
     const baseSpread = controls.get('inkSpread') || 20;
     const spread = baseSpread + audioForce * 4.0;
+    // When the title is set to static, its particles ignore the audio pulse
+    // (no size change, no jitter) so the text stays put while the frame reacts.
+    const titleReactive = controls.get('titleReactive') !== false;
+    const titleSpread = titleReactive ? spread : baseSpread;
 
     if (mode === 'Ink' || mode === 'Audio Pulse') {
         const blurNode = document.getElementById(`${gooFilterId}-blur`);
@@ -1088,6 +1095,10 @@ function draw() {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.fillText(bottomText, w/2, h - (controls.get('borderPadding') || 0) - 60);
         ctx.restore();
+    }
+
+    if (_audioStatusEl) {
+        _audioStatusEl.textContent = audioStatusMsg + (isAudioPlaying ? '  ·  level ' + audioLevel.toFixed(2) : '');
     }
 
     if (controls.get('showAudioDebug')) {
