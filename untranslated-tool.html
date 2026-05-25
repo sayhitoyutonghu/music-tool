@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>untranslated tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #111; overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body { display: flex; }
+
+    /* --- Control panel --- */
+    #panel {
+      width: 300px; height: 100%; flex: 0 0 300px;
+      background: #1b1b1b; color: #ddd; overflow-y: auto;
+      padding: 14px; border-right: 1px solid #333;
+    }
+    #panel h1 { font-size: 14px; letter-spacing: .5px; margin-bottom: 12px; color: #BDC273; }
+    #panel .field { margin-bottom: 12px; }
+    #panel label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #888; margin-bottom: 4px; }
+    #panel input[type=range] { width: 100%; }
+    #panel input[type=text], #panel input[type=number], #panel select, #panel textarea {
+      width: 100%; background: #2a2a2a; border: 1px solid #3a3a3a; color: #eee;
+      padding: 6px 8px; border-radius: 5px; font-size: 12px;
+    }
+    #panel textarea { resize: vertical; min-height: 48px; }
+    #panel input[type=file] { width: 100%; font-size: 11px; color: #bbb; }
+    #panel input[type=file]::file-selector-button {
+      background: #2a2a2a; border: 1px solid #3a3a3a; color: #eee;
+      padding: 5px 10px; border-radius: 5px; margin-right: 8px; cursor: pointer; font-size: 11px;
+    }
+    #panel .row { display: flex; gap: 8px; align-items: center; }
+    #panel .row input[type=range] { flex: 1; }
+    #panel .val { font-size: 11px; color: #aaa; min-width: 38px; text-align: right; }
+    #panel input.swatch {
+      flex: 0 0 34px; width: 34px; height: 30px; padding: 2px;
+      background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 5px; cursor: pointer;
+    }
+    #panel .row input[type=text] { flex: 1; }
+    #panel .check { display: flex; align-items: center; gap: 8px; }
+    #panel .check label { margin: 0; text-transform: none; color: #ccc; font-size: 12px; }
+    #panel button {
+      width: 100%; padding: 8px; margin-top: 4px; cursor: pointer;
+      background: #BDC273; color: #111; border: none; border-radius: 5px; font-weight: 600;
+    }
+    #panel button.secondary { background: #333; color: #ddd; }
+    #panel hr { border: none; border-top: 1px solid #333; margin: 14px 0; }
+
+    .tool-canvas-area {
+      flex: 1; height: 100%; display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    canvas { display: block; background: transparent; max-width: 100%; max-height: 100%; }
+    #panel .dim-label { font-size: 11px; color: #888; min-width: 12px; }
+  </style>
+</head>
+<body>
+  <aside id="panel">
+    <h1>UNTRANSLATED TOOL</h1>
+
+    <div class="field">
+      <label>Export</label>
+      <button data-action="exportPng">Export PNG</button>
+      <button class="secondary" data-action="recordVideo">Record Video</button>
+    </div>
+
+    <hr>
+
+    <div class="field">
+      <label>Canvas Size</label>
+      <select data-key="sizePreset">
+        <option>Custom</option>
+        <option>HD 16:9</option>
+        <option>Square 1:1</option>
+        <option>4:3</option>
+        <option>Portrait 9:16</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="row">
+        <span class="dim-label">W</span>
+        <input type="number" data-key="canvasWidth" min="1" max="4096" step="1">
+        <span class="dim-label">H</span>
+        <input type="number" data-key="canvasHeight" min="1" max="4096" step="1">
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="field">
+      <label>Text</label>
+      <input type="text" data-key="text">
+    </div>
+    <div class="field">
+      <label>Text Color</label>
+      <div class="row">
+        <input type="color" class="swatch" data-color-for="textColor">
+        <input type="text" data-key="textColor">
+      </div>
+    </div>
+    <div class="field">
+      <label>Highlight Color</label>
+      <div class="row">
+        <input type="color" class="swatch" data-color-for="highlightColor">
+        <input type="text" data-key="highlightColor">
+      </div>
+    </div>
+    <div class="field check">
+      <input type="checkbox" data-key="showInner" id="cb-showInner">
+      <label for="cb-showInner">Third Gradient Color</label>
+    </div>
+    <div class="field">
+      <label>Inner Color (3rd gradient stop)</label>
+      <div class="row">
+        <input type="color" class="swatch" data-color-for="innerColor">
+        <input type="text" data-key="innerColor">
+      </div>
+    </div>
+    <div class="field">
+      <label>Mode</label>
+      <select data-key="mode">
+        <option>Audio Pulse</option>
+        <option>Ink</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Text Layout</label>
+      <select data-key="textLayout">
+        <option>Center</option>
+        <option>Frame</option>
+      </select>
+    </div>
+    <div class="field check">
+      <input type="checkbox" data-key="fillWidth" id="cb-fillWidth">
+      <label for="cb-fillWidth">Fill Width (fuse title to side borders)</label>
+    </div>
+    <div class="field">
+      <label>Title Position</label>
+      <select data-key="positionV">
+        <option>Top</option>
+        <option>Center</option>
+        <option>Bottom</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Font Size <span class="val"></span></label>
+      <input type="range" data-key="fontSize" min="20" max="400" step="1">
+    </div>
+    <div class="field">
+      <label>Letter Spacing <span class="val"></span></label>
+      <input type="range" data-key="letterSpacing" min="-60" max="40" step="1">
+    </div>
+    <div class="field">
+      <label>Ink Spread <span class="val"></span></label>
+      <input type="range" data-key="inkSpread" min="2" max="60" step="1">
+    </div>
+    <div class="field">
+      <label>Edge Roundness <span class="val"></span></label>
+      <input type="range" data-key="edgeRound" min="1" max="3" step="0.1">
+    </div>
+    <div class="field">
+      <label>Blur Amount <span class="val"></span></label>
+      <input type="range" data-key="blurAmount" min="0" max="30" step="1">
+    </div>
+
+    <hr>
+
+    <div class="field check">
+      <input type="checkbox" data-key="showBorder" id="cb-showBorder">
+      <label for="cb-showBorder">Show Border</label>
+    </div>
+    <div class="field">
+      <label>Border Thickness <span class="val"></span></label>
+      <input type="range" data-key="borderThickness" min="0" max="200" step="1">
+    </div>
+    <div class="field">
+      <label>Border Fluidity <span class="val"></span></label>
+      <input type="range" data-key="borderFluidity" min="0" max="8" step="0.1">
+    </div>
+    <div class="field">
+      <label>Border Complexity <span class="val"></span></label>
+      <input type="range" data-key="borderComplexity" min="0.5" max="6" step="0.1">
+    </div>
+    <div class="field">
+      <label>Frame Padding <span class="val"></span></label>
+      <input type="range" data-key="framePadding" min="0" max="500" step="1">
+    </div>
+
+    <hr>
+
+    <div class="field check">
+      <input type="checkbox" data-key="audioReactive" id="cb-audioReactive">
+      <label for="cb-audioReactive">Audio Reactive</label>
+    </div>
+    <div class="field check">
+      <input type="checkbox" data-key="whiteTextBlur" id="cb-whiteTextBlur">
+      <label for="cb-whiteTextBlur">White Text Blur</label>
+    </div>
+    <div class="field check">
+      <input type="checkbox" data-key="showAudioDebug" id="cb-showAudioDebug">
+      <label for="cb-showAudioDebug">Show Audio Debug</label>
+    </div>
+    <div class="field">
+      <label>Audio Sensitivity <span class="val"></span></label>
+      <input type="range" data-key="audioSensitivity" min="0" max="200" step="1">
+    </div>
+    <div class="field">
+      <label>Audio File (upload)</label>
+      <input type="file" accept="audio/*" data-file-for="audioFile">
+    </div>
+    <button data-action="playAudio">Play / Pause Audio</button>
+    <button class="secondary" data-action="checkStatus">Check Audio Status</button>
+
+    <hr>
+
+    <div class="field">
+      <label>Element Image (upload)</label>
+      <input type="file" accept="image/*" data-file-for="elementImage">
+    </div>
+    <div class="field">
+      <label>Element Opacity <span class="val"></span></label>
+      <input type="range" data-key="elementOpacity" min="0" max="100" step="1">
+    </div>
+    <div class="field">
+      <label>Subtitle</label>
+      <input type="text" data-key="subtitle">
+    </div>
+    <div class="field">
+      <label>Bottom Text</label>
+      <input type="text" data-key="bottomText">
+    </div>
+  </aside>
+
+  <div class="tool-canvas-area">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    // ---- Mobile DPR cap (from platform runtime) ----
+    (function() {
+      var _isMobile = window.innerWidth <= 768;
+      if (_isMobile) {
+        var _nativeDPR = window.devicePixelRatio || 1;
+        var _cappedDPR = Math.min(1.5, _nativeDPR);
+        Object.defineProperty(window, 'devicePixelRatio', { get: function() { return _cappedDPR; } });
+      }
+    })();
+
+    // ---- Canvas runtime API (platform shim, trimmed) ----
+    window.CanvasRuntimeAPI = (function() {
+      var _canvas = document.getElementById('canvas');
+      function getMousePos(event) {
+        if (!_canvas) return { x: 0, y: 0 };
+        var rect = _canvas.getBoundingClientRect();
+        var scaleX = _canvas.width / rect.width;
+        var scaleY = _canvas.height / rect.height;
+        var touch = event.touches && event.touches[0] ? event.touches[0]
+          : event.changedTouches && event.changedTouches[0] ? event.changedTouches[0] : null;
+        var clientX = touch ? touch.clientX : event.clientX;
+        var clientY = touch ? touch.clientY : event.clientY;
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+      }
+      function drawImage(ctx, img, x, y, w, h, fit) {
+        if (!img || !img.width || !img.height) return;
+        fit = fit || 'cover';
+        var ar = img.width / img.height, car = w / h;
+        var sx = 0, sy = 0, sw = img.width, sh = img.height;
+        var dx = x, dy = y, dw = w, dh = h;
+        if (fit === 'cover') {
+          if (ar > car) { sw = img.height * car; sx = (img.width - sw) / 2; }
+          else { sh = img.width / car; sy = (img.height - sh) / 2; }
+        } else if (fit === 'contain') {
+          if (ar > car) { dh = w / ar; dy = y + (h - dh) / 2; }
+          else { dw = h * ar; dx = x + (w - dw) / 2; }
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+      }
+      return { getMousePos: getMousePos, drawImage: drawImage };
+    })();
+    window.ChatoolyCanvas = window.CanvasRuntimeAPI;
+
+    // ---- Cross-origin image helper (from platform runtime) ----
+    window.loadImage = function(src, callback) {
+      var img = new Image();
+      if (src && typeof src === 'string' && !src.startsWith('data:')) img.crossOrigin = 'anonymous';
+      img.onload = function() { if (callback) callback(img); };
+      img.onerror = function() { console.error('Failed to load image:', src); };
+      img.src = src;
+      return img;
+    };
+  </script>
+
+  <script>
+    var canvas = document.getElementById('canvas');
+    var ctx = canvas.getContext('2d');
+    var __ctArea = canvas.parentElement;
+    var __maxDim = (window.innerWidth <= 768) ? 960 : 4096;
+
+    // ======================================================================
+    // REAL controls implementation (replaces the platform's inert shim).
+    // Wires DOM inputs <-> values and actually fires onChange / onAction.
+    // ======================================================================
+    var controls = (function() {
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5};
+      var _defaults = JSON.parse(JSON.stringify(_v));
+      var _changeCbs = {};
+      var _actionCbs = {};
+
+      function _hexToRgb(hex) {
+        var h = String(hex || '').replace('#', '');
+        if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+        if (h.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(h)) return null;
+        return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) };
+      }
+      function _clamp(n,min,max){ return Math.min(max, Math.max(min,n)); }
+      function _hexToRgbaCss(hex, op) {
+        var rgb = _hexToRgb(hex); if (!rgb) return 'rgba(0,0,0,1)';
+        var a = _clamp(op != null && !isNaN(Number(op)) ? Number(op) : 100, 0, 100) / 100;
+        return 'rgba('+rgb.r+','+rgb.g+','+rgb.b+','+a+')';
+      }
+
+      var api = {
+        get: function(k){ return _v[k]; },
+        getAll: function(){ return Object.assign({}, _v); },
+        getDefaults: function(){ return JSON.parse(JSON.stringify(_defaults)); },
+        getColorWithAlpha: function(baseKey){ return _hexToRgbaCss(_v[baseKey], _v[baseKey+'_opacity']); },
+        set: function(k,v){
+          _v[k] = v;
+          (_changeCbs[k] || []).forEach(function(cb){ try { cb(v); } catch(e){ console.error(e); } });
+        },
+        onChange: function(k,cb){ (_changeCbs[k] = _changeCbs[k] || []).push(cb); },
+        onAny: function(){},
+        onAction: function(name,cb){ _actionCbs[name] = cb; },
+        _fireAction: function(name){ if (_actionCbs[name]) try { _actionCbs[name](); } catch(e){ console.error(e); } }
+      };
+      window.ControlsAPI = api;
+      window.ChatoolyControls = api;
+      return api;
+    })();
+
+    // ---- Bind DOM panel to controls ----
+    (function bindPanel() {
+      function coerce(input, raw) {
+        if (input.type === 'checkbox') return input.checked;
+        if (input.type === 'range' || input.type === 'number') {
+          var n = parseFloat(raw); return isNaN(n) ? raw : n;
+        }
+        return raw;
+      }
+      document.querySelectorAll('[data-key]').forEach(function(input) {
+        var key = input.dataset.key;
+        var cur = controls.get(key);
+        if (input.type === 'checkbox') input.checked = !!cur;
+        else if (cur != null) input.value = cur;
+
+        var valSpan = input.parentElement.querySelector('.val');
+        function showVal(){ if (valSpan) valSpan.textContent = input.value; }
+        showVal();
+
+        var evt = (input.tagName === 'SELECT' || input.type === 'checkbox') ? 'change' : 'input';
+        input.addEventListener(evt, function() {
+          controls.set(key, coerce(input, input.value));
+          showVal();
+        });
+      });
+      document.querySelectorAll('[data-action]').forEach(function(btn) {
+        btn.addEventListener('click', function() { controls._fireAction(btn.dataset.action); });
+      });
+
+      // Local file uploads: read the chosen file as a data URL and feed it into
+      // the matching control (data URLs are same-origin, so no CORS tainting).
+      document.querySelectorAll('input[type=file][data-file-for]').forEach(function(input) {
+        var key = input.dataset.fileFor;
+        input.addEventListener('change', function() {
+          var f = input.files && input.files[0];
+          if (!f) return;
+          var reader = new FileReader();
+          reader.onload = function() { controls.set(key, reader.result); };
+          reader.readAsDataURL(f);
+        });
+      });
+
+      // Sync color swatch <-> hex text input (both drive the same key).
+      document.querySelectorAll('input.swatch[data-color-for]').forEach(function(swatch) {
+        var key = swatch.dataset.colorFor;
+        var textInput = document.querySelector('input[type=text][data-key="' + key + '"]');
+        function normHex(v) {
+          var h = String(v || '').trim();
+          if (h[0] !== '#') h = '#' + h;
+          return /^#[0-9a-fA-F]{6}$/.test(h) ? h : null;
+        }
+        var init = normHex(controls.get(key));
+        if (init) swatch.value = init;
+        swatch.addEventListener('input', function() {
+          if (textInput) {
+            textInput.value = swatch.value;
+            textInput.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+        if (textInput) {
+          textInput.addEventListener('input', function() {
+            var h = normHex(textInput.value);
+            if (h) swatch.value = h;
+          });
+        }
+      });
+    })();
+
+    // ======================================================================
+    // CREATIVE CODE (unchanged from the brik export)
+    // ======================================================================
+    // ---- Canvas size presets (W/H + preset dropdown) ----
+    (function canvasSizing() {
+      var PRESETS = {
+        'HD 16:9': [1280, 720],
+        'Square 1:1': [1000, 1000],
+        '4:3': [1200, 900],
+        'Portrait 9:16': [720, 1280]
+      };
+      var wInput = document.querySelector('input[data-key="canvasWidth"]');
+      var hInput = document.querySelector('input[data-key="canvasHeight"]');
+      var presetSel = document.querySelector('select[data-key="sizePreset"]');
+      var _prog = false;
+
+      function apply() {
+        var cw = Math.min(__maxDim, Math.max(1, parseInt(controls.get('canvasWidth'), 10) || 1000));
+        var ch = Math.min(__maxDim, Math.max(1, parseInt(controls.get('canvasHeight'), 10) || 1000));
+        canvas.width = cw;
+        canvas.height = ch;
+      }
+
+      controls.onChange('sizePreset', function(p) {
+        if (_prog) return;
+        var dims = PRESETS[p];
+        if (!dims) return; // 'Custom' -> leave W/H as-is
+        _prog = true;
+        controls.set('canvasWidth', dims[0]);
+        controls.set('canvasHeight', dims[1]);
+        if (wInput) wInput.value = dims[0];
+        if (hInput) hInput.value = dims[1];
+        _prog = false;
+        apply();
+      });
+
+      function toCustom() {
+        _prog = true;
+        controls.set('sizePreset', 'Custom');
+        if (presetSel) presetSel.value = 'Custom';
+        _prog = false;
+      }
+      controls.onChange('canvasWidth', function() { if (_prog) return; toCustom(); apply(); });
+      controls.onChange('canvasHeight', function() { if (_prog) return; toCustom(); apply(); });
+
+      apply();
+    })();
+
+    {
+      // @clay-no-bg-control
+const canvasEl = canvas;
+let w, h;
+let particles = [];
+let particleBounds = null;
+let mouseTrail = [];
+let splashParticles = [];
+let elementImageObj = null;
+let lastElementUrl = '';
+
+// --- AUDIO SYSTEM ---
+let audioContext = null;
+let analyser = null;
+let audioSourceNode = null;
+let audioObj = new Audio();
+audioObj.crossOrigin = "anonymous";
+audioObj.loop = true;
+let audioDataArray = null;
+let audioLevel = 0;
+let smoothedAudioLevel = 0;
+let isAudioPlaying = false;
+let audioStatusMsg = "Waiting for upload...";
+
+function initAudio() {
+    if (audioContext && audioContext.state !== 'closed') {
+        if (audioContext.state === 'suspended') audioContext.resume();
+        return;
+    }
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.8;
+
+        audioSourceNode = audioContext.createMediaElementSource(audioObj);
+        audioSourceNode.connect(analyser);
+        analyser.connect(audioContext.destination);
+
+        audioDataArray = new Uint8Array(analyser.frequencyBinCount);
+        audioStatusMsg = "Audio System Initialized";
+    } catch (e) {
+        console.error("Audio initialization failed", e);
+        audioStatusMsg = "Error: " + e.message;
+    }
+}
+
+controls.onAction('playAudio', () => {
+    const file = controls.get('audioFile');
+    const url = typeof file === 'string' ? file : (file && file.url ? file.url : null);
+
+    if (!url && !audioObj.src) {
+        audioStatusMsg = "No audio file found";
+        return;
+    }
+
+    if (!audioObj.src && url) {
+        audioObj.src = url;
+    }
+
+    initAudio();
+
+    if (isAudioPlaying) {
+        audioObj.pause();
+        isAudioPlaying = false;
+        audioStatusMsg = "Audio Paused";
+    } else {
+        audioObj.play().then(() => {
+            isAudioPlaying = true;
+            audioStatusMsg = "Audio Playing";
+        }).catch(e => {
+            console.error("Audio play failed", e);
+            isAudioPlaying = false;
+            audioStatusMsg = "Play Error: " + e.message;
+        });
+    }
+});
+
+controls.onAction('checkStatus', () => {
+    const file = controls.get('audioFile');
+    const hasFile = !!(file && (typeof file === 'string' || file.url));
+    if (!audioContext) {
+        audioStatusMsg = hasFile ? "File detected. Click Play." : "No file detected.";
+    } else {
+        audioStatusMsg = `State: ${audioContext.state} | Playing: ${isAudioPlaying} | Level: ${audioLevel.toFixed(2)}`;
+    }
+    console.log("Audio Status:", audioStatusMsg);
+});
+
+function _downloadBlob(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+controls.onAction('exportPng', () => {
+    try {
+        canvasEl.toBlob((blob) => {
+            if (blob) _downloadBlob(blob, 'untranslated.png');
+        }, 'image/png');
+    } catch (e) {
+        console.error('PNG export failed', e);
+        alert('Export failed — the loaded image may be cross-origin. Upload a local image instead.');
+    }
+});
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+controls.onAction('recordVideo', () => {
+    const btn = document.querySelector('[data-action="recordVideo"]');
+    if (isRecording) {
+        if (mediaRecorder) mediaRecorder.stop();
+        return;
+    }
+    let stream;
+    try {
+        stream = canvasEl.captureStream(60);
+    } catch (e) {
+        alert('Screen recording not supported in this browser.');
+        return;
+    }
+    // Include the playing audio track if the audio graph is live.
+    if (audioContext && audioSourceNode) {
+        try {
+            const dest = audioContext.createMediaStreamDestination();
+            audioSourceNode.connect(dest);
+            dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+        } catch (e) { /* audio capture optional */ }
+    }
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : (MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '');
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        _downloadBlob(blob, 'untranslated.webm');
+        isRecording = false;
+        if (btn) btn.textContent = 'Record Video';
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    if (btn) btn.textContent = 'Stop Recording';
+});
+
+controls.onChange('audioFile', (file) => {
+    const url = typeof file === 'string' ? file : (file && file.url ? file.url : null);
+    if (url) {
+        audioObj.src = url;
+        audioObj.load();
+        isAudioPlaying = false;
+        audioStatusMsg = "New Audio Loaded. Click Play.";
+    }
+});
+
+function updateAudioLevel() {
+    if (!analyser || !isAudioPlaying) {
+        audioLevel = 0;
+        return;
+    }
+    analyser.getByteFrequencyData(audioDataArray);
+
+    let sum = 0;
+    const count = Math.floor(audioDataArray.length * 0.4);
+    for (let i = 0; i < count; i++) {
+        sum += audioDataArray[i];
+    }
+    audioLevel = (sum / count) / 255;
+}
+
+function updateElementImage() {
+    const url = controls.get('elementImage');
+    if (url && url !== lastElementUrl) {
+        lastElementUrl = url;
+        elementImageObj = new Image();
+        elementImageObj.crossOrigin = "anonymous";
+        elementImageObj.src = url;
+    }
+}
+
+const DEFAULT_TEXTURE_URL = 'https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/5acba6e14_bgTexture_mosfqkte.jpg';
+let bgTextureObj = null;
+let lastBgTextureUrl = '';
+
+function updateBgTexture() {
+    const url = controls.get('bgTexture') || DEFAULT_TEXTURE_URL;
+    if (url && url !== lastBgTextureUrl) {
+        lastBgTextureUrl = url;
+        bgTextureObj = new Image();
+        bgTextureObj.crossOrigin = "anonymous";
+        bgTextureObj.src = url;
+    }
+}
+
+let displaceOffsetX = 0;
+let displaceOffsetY = 0;
+let lastDisplaceTime = 0;
+
+let mouse = { x: -1000, y: -1000, isDown: false, vx: 0, vy: 0 };
+
+// SVG Filters
+const gooFilterId = 'goo-' + Math.random().toString(36).substr(2, 9);
+const sharpFilterId = 'sharp-' + Math.random().toString(36).substr(2, 9);
+const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+svg.style.position = 'absolute';
+svg.style.width = '0';
+svg.style.height = '0';
+svg.innerHTML = `
+    <filter id="${gooFilterId}" color-interpolation-filters="sRGB">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" id="${gooFilterId}-blur" />
+        <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 80 -40" result="goo" id="${gooFilterId}-matrix" />
+    </filter>
+    <filter id="${sharpFilterId}">
+        <feComponentTransfer in="SourceGraphic">
+            <feFuncA type="discrete" tableValues="0 1" />
+        </feComponentTransfer>
+    </filter>
+`;
+document.body.appendChild(svg);
+
+const _offscreen = new OffscreenCanvas(1, 1);
+const _offCtx = _offscreen.getContext('2d', { willReadFrequently: true });
+
+// Separate offscreen used to composite the border + title as ONE shape before
+// the goo filter, so the metaball treats frame + title as a single whole.
+const _goo = new OffscreenCanvas(1, 1);
+const _gctx = _goo.getContext('2d');
+
+canvasEl.addEventListener('mousemove', (e) => {
+    const pos = CanvasRuntimeAPI.getMousePos(e);
+    if (mouse.x !== -1000) {
+        mouse.vx = pos.x - mouse.x;
+        mouse.vy = pos.y - mouse.y;
+    }
+    mouse.x = pos.x;
+    mouse.y = pos.y;
+});
+
+canvasEl.addEventListener('mousedown', (e) => {
+    mouse.isDown = true;
+    const pos = CanvasRuntimeAPI.getMousePos(e);
+    mouse.x = pos.x;
+    mouse.y = pos.y;
+});
+
+canvasEl.addEventListener('mouseup', () => {
+    mouse.isDown = false;
+});
+
+let cache = {};
+
+function drawDynamicBorder(targetCtx, tw, th, thickness, audioForce, time, complexity) {
+    const show = controls.get('showBorder');
+    if (!show) return;
+
+    const padding = controls.get('borderPadding') ?? 0;
+    const isAudioReactive = controls.get('audioReactive');
+
+    const x1 = padding, y1 = padding;
+    const x2 = tw - padding, y2 = th - padding;
+
+    targetCtx.beginPath();
+    targetCtx.lineWidth = thickness * (isAudioReactive ? (1 + audioForce * 0.2) : 1);
+    targetCtx.lineJoin = 'round';
+    targetCtx.lineCap = 'round';
+
+    const steps = 120;
+    function getNoise(t, phase) {
+        const a = isAudioReactive ? audioForce * 40 : 0;
+        return (Math.sin(t * 0.8 + phase) * (12 + a) +
+               Math.sin(t * 1.5 - phase * 0.5) * (8 + a) +
+               Math.sin(t * 0.4 + phase * 2.1) * (15 + a)) * (complexity / 4);
+    }
+
+    for(let i=0; i<=steps; i++) {
+        const pct = i/steps;
+        const x = x1 + (x2 - x1) * pct;
+        const noise = getNoise(time + pct * complexity, 0);
+        if(i===0) targetCtx.moveTo(x, y1 + noise);
+        else targetCtx.lineTo(x, y1 + noise);
+    }
+    for(let i=0; i<=steps; i++) {
+        const pct = i/steps;
+        const y = y1 + (y2 - y1) * pct;
+        const noise = getNoise(time + pct * complexity + 10, 1.5);
+        targetCtx.lineTo(x2 + noise, y);
+    }
+    for(let i=0; i<=steps; i++) {
+        const pct = i/steps;
+        const x = x2 - (x2 - x1) * pct;
+        const noise = getNoise(time + pct * complexity + 20, 3);
+        targetCtx.lineTo(x, y2 + noise);
+    }
+    for(let i=0; i<=steps; i++) {
+        const pct = i/steps;
+        const y = y2 - (y2 - y1) * pct;
+        const noise = getNoise(time + pct * complexity + 30, 4.5);
+        targetCtx.lineTo(x1 + noise, y);
+    }
+    targetCtx.closePath();
+    targetCtx.stroke();
+}
+
+function renderText(targetCtx, tw, th) {
+    const layout = controls.get('textLayout') || 'Center';
+    const text = controls.get('text') || "untranslated";
+    const font = controls.get('fontPicker') || {family: 'system-ui', weight: 400};
+    const fontSize = controls.get('fontSize') || 206;
+    const letterSpacing = controls.get('letterSpacing') || -12;
+    const lineHeightMult = controls.get('lineHeight') || 0.79;
+    const align = controls.get('textAlign') || 'Center';
+    const posV = controls.get('positionV') || 'Bottom';
+    const padding = controls.get('framePadding') || 200;
+
+    targetCtx.font = `${font.weight || 400} ${fontSize}px ${font.family || 'system-ui'}`;
+    targetCtx.textBaseline = 'middle';
+
+    if (layout === 'Frame') {
+        targetCtx.textAlign = 'center';
+        const flatText = String(text).replace(/\n/g, ' ').trim();
+        const pW = Math.max(1, tw - padding * 2);
+        const pH = Math.max(1, th - padding * 2);
+        const perimeter = pW * 2 + pH * 2;
+        const step = perimeter / flatText.length;
+        let currentDist = 0;
+        for(let i=0; i<flatText.length; i++) {
+            let x, y, angle;
+            if (currentDist < pW) { x = padding + currentDist; y = padding; angle = 0; }
+            else if (currentDist < pW + pH) { x = tw - padding; y = padding + (currentDist - pW); angle = Math.PI / 2; }
+            else if (currentDist < pW * 2 + pH) { x = tw - padding - (currentDist - (pW + pH)); y = th - padding; angle = Math.PI; }
+            else { x = padding; y = th - padding - (currentDist - (pW * 2 + pH)); angle = -Math.PI / 2; }
+            targetCtx.save(); targetCtx.translate(x, y); targetCtx.rotate(angle); targetCtx.fillText(flatText[i], 0, 0); targetCtx.restore();
+            currentDist += step;
+        }
+    } else {
+        const fillWidth = controls.get('fillWidth');
+        const bpad = controls.get('borderPadding') ?? 0;
+        const bthick = controls.get('borderThickness') || 92;
+        const lines = String(text).split('\n');
+        const lineHeight = fontSize * lineHeightMult;
+        const totalHeight = (lines.length - 1) * lineHeight;
+        let startY = th/2 - totalHeight/2;
+        if (posV === 'Top') startY = totalHeight/2 + 100;
+        if (posV === 'Bottom') startY = th - totalHeight/2 - 100;
+        lines.forEach((line, i) => {
+            let y = startY + i * lineHeight;
+            let totalWidth = 0;
+            for(let j=0; j<line.length; j++) totalWidth += targetCtx.measureText(line[j]).width + letterSpacing;
+            totalWidth -= letterSpacing;
+
+            if (fillWidth && totalWidth > 0) {
+                // Stretch the line horizontally so its edges overlap the side
+                // borders -> the metaball fuses title + frame into one piece.
+                const edge = bpad + bthick * 0.3;
+                const target = Math.max(1, tw - edge * 2);
+                const sx = target / totalWidth;
+                targetCtx.save();
+                targetCtx.translate(edge, y);
+                targetCtx.scale(sx, 1);
+                let lx = 0;
+                for(let j=0; j<line.length; j++) {
+                    targetCtx.fillText(line[j], lx, 0);
+                    lx += targetCtx.measureText(line[j]).width + letterSpacing;
+                }
+                targetCtx.restore();
+                return;
+            }
+
+            let lx = tw/2;
+            if (align === 'Left') lx = tw/2 - 400;
+            if (align === 'Right') lx = tw/2 + 400;
+            if (align === 'Center') lx -= totalWidth/2;
+            if (align === 'Right') lx -= totalWidth;
+            for(let j=0; j<line.length; j++) {
+                targetCtx.fillText(line[j], lx, y);
+                lx += targetCtx.measureText(line[j]).width + letterSpacing;
+            }
+        });
+    }
+}
+
+function initParticles() {
+    const text = controls.get('text') || "untranslated";
+    const font = controls.get('fontPicker') || {family: 'system-ui', weight: 400};
+    const fontSize = controls.get('fontSize') || 206;
+    const spacing = controls.get('shapeSpacing') || 4;
+    const letterSpacing = controls.get('letterSpacing') || -12;
+    const lineHeightMult = controls.get('lineHeight') || 0.79;
+    const align = controls.get('textAlign') || 'Center';
+    const posV = controls.get('positionV') || 'Bottom';
+    const textLayout = controls.get('textLayout') || 'Center';
+    const framePadding = controls.get('framePadding') || 200;
+    const fillWidth = controls.get('fillWidth');
+    const borderThickness = controls.get('borderThickness') || 92;
+    const borderPadding = controls.get('borderPadding') ?? 0;
+
+    if (cache.text === text && cache.font === font.family && Number(cache.fontSize) === Number(fontSize) && Number(cache.spacing) === Number(spacing) && Number(cache.letterSpacing) === Number(letterSpacing) && Number(cache.lineHeight) === Number(lineHeightMult) && cache.w === w && cache.h === h && cache.align === align && cache.posV === posV && cache.textLayout === textLayout && cache.framePadding === framePadding && cache.fillWidth === fillWidth && Number(cache.borderThickness) === Number(borderThickness) && Number(cache.borderPadding) === Number(borderPadding)) return;
+
+    cache = { text, font: font.family, fontSize, spacing, letterSpacing, lineHeight: lineHeightMult, w, h, align, posV, textLayout, framePadding, fillWidth, borderThickness, borderPadding };
+
+    _offscreen.width = w; _offscreen.height = h;
+    _offCtx.clearRect(0, 0, w, h);
+    _offCtx.fillStyle = 'white';
+    renderText(_offCtx, w, h);
+
+    const imgData = _offCtx.getImageData(0, 0, w, h).data;
+    particles = [];
+    let step = spacing;
+    for (let y = 0; y < h; y += step) {
+        for (let x = 0; x < w; x += step) {
+            const idx = (y * w + x) * 4;
+            if (imgData[idx] > 128) {
+                particles.push({ baseX: x, baseY: y, x: x, y: y, vx: 0, vy: 0 });
+            }
+        }
+    }
+
+    if (particles.length) {
+        let minX = Infinity, maxX = -Infinity;
+        for (const p of particles) { if (p.baseX < minX) minX = p.baseX; if (p.baseX > maxX) maxX = p.baseX; }
+        const band = Math.max(1, (maxX - minX) * 0.14);
+        const leftYs = [], rightYs = [];
+        for (const p of particles) {
+            if (p.baseX <= minX + band) leftYs.push(p.baseY);
+            if (p.baseX >= maxX - band) rightYs.push(p.baseY);
+        }
+        // Anchor near the true top of the edge letters (band top) so the fillet
+        // rounds the actual image-window corner. A small percentile avoids single
+        // stray pixels but stays at the letter top.
+        const pct = (arr, q) => { if (!arr.length) return Infinity; arr.sort((a, b) => a - b); return arr[Math.floor(q * (arr.length - 1))]; };
+        particleBounds = { minX, maxX, leftTop: pct(leftYs, 0.04), rightTop: pct(rightYs, 0.04) };
+    } else {
+        particleBounds = null;
+    }
+}
+
+// Rounds the two bottom inner corners of the image window so the title->frame
+// junction matches the rounded top corners (title + frame read as one piece).
+function drawCornerFillets(targetCtx, r) {
+    if (!controls.get('fillWidth') || !particleBounds) return;
+    const bpad = controls.get('borderPadding') ?? 0;
+    const bthick = controls.get('borderThickness') || 92;
+    const leftInner = bpad + bthick * 0.5;
+    const rightInner = w - bpad - bthick * 0.5;
+    cornerFillet(targetCtx, leftInner, particleBounds.leftTop, r, 'left');
+    cornerFillet(targetCtx, rightInner, particleBounds.rightTop, r, 'right');
+}
+
+function cornerFillet(targetCtx, cx, cy, r, side) {
+    targetCtx.beginPath();
+    if (side === 'left') {
+        targetCtx.moveTo(cx, cy - r);
+        targetCtx.lineTo(cx, cy);
+        targetCtx.lineTo(cx + r, cy);
+        targetCtx.arc(cx + r, cy - r, r, 0.5 * Math.PI, Math.PI, false);
+    } else {
+        targetCtx.moveTo(cx, cy - r);
+        targetCtx.lineTo(cx, cy);
+        targetCtx.lineTo(cx - r, cy);
+        targetCtx.arc(cx - r, cy - r, r, 0.5 * Math.PI, 0, true);
+    }
+    targetCtx.closePath();
+    targetCtx.fill();
+}
+
+canvasEl.addEventListener('click', () => {
+    if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+});
+
+function draw() {
+    w = Math.round(canvasEl.width);
+    h = Math.round(canvasEl.height);
+    initParticles();
+    updateAudioLevel();
+
+    const mode = controls.get('mode') || 'Audio Pulse';
+    const texOpacity = (controls.get('bgTextureOpacity') ?? 50) / 100;
+    smoothedAudioLevel += (audioLevel - smoothedAudioLevel) * 0.15;
+    const audioSens = controls.get('audioSensitivity') || 80;
+    const audioForce = smoothedAudioLevel * (audioSens / 50) * 5.0;
+
+    ctx.clearRect(0, 0, w, h);
+
+    updateElementImage();
+    if (elementImageObj && elementImageObj.complete) {
+        ctx.save();
+        ctx.globalAlpha = (controls.get('elementOpacity') ?? 100) / 100;
+        CanvasRuntimeAPI.drawImage(ctx, elementImageObj, 0, 0, w, h, 'cover');
+        ctx.restore();
+    }
+
+    const now = Date.now();
+    if (now - lastDisplaceTime > 1000 / 8) {
+        const jitterX = controls.get('displaceJitterX') ?? 0;
+        const jitterY = controls.get('displaceJitterY') ?? 0;
+        displaceOffsetX = (Math.random() - 0.5) * jitterX;
+        displaceOffsetY = (Math.random() - 0.5) * jitterY;
+        lastDisplaceTime = now;
+    }
+
+    updateBgTexture();
+    if (bgTextureObj && bgTextureObj.complete) {
+        ctx.save();
+        ctx.globalAlpha = texOpacity;
+        ctx.globalCompositeOperation = controls.get('bgTextureBlend') || 'overlay';
+        CanvasRuntimeAPI.drawImage(ctx, bgTextureObj, displaceOffsetX * 2, displaceOffsetY * 2, w, h, 'cover');
+        ctx.restore();
+    }
+
+    const textColor = controls.get('textColor') || '#BDC273';
+    const baseSpread = controls.get('inkSpread') || 20;
+    const spread = baseSpread + audioForce * 4.0;
+
+    if (mode === 'Ink' || mode === 'Audio Pulse') {
+        const blurNode = document.getElementById(`${gooFilterId}-blur`);
+        if (blurNode) blurNode.setAttribute('stdDeviation', spread * (controls.get('edgeRound') || 1));
+
+        const fluidity = controls.get('borderFluidity') ?? 2;
+        const complexity = controls.get('borderComplexity') ?? 1;
+        const time = Date.now() * 0.001 * fluidity;
+
+        // Composite border + title + trail into ONE shape on the offscreen
+        // (no filter), then apply the goo metaball ONCE to the union. This makes
+        // frame + title a single whole -> all corners/junctions round naturally.
+        _goo.width = w; _goo.height = h;
+        _gctx.clearRect(0, 0, w, h);
+        _gctx.fillStyle = textColor; _gctx.strokeStyle = textColor;
+
+        drawDynamicBorder(_gctx, w, h, controls.get('borderThickness') || 92, audioForce, time, complexity);
+
+        _gctx.beginPath();
+        particles.forEach((p, i) => {
+            let dx = mouse.x - p.x, dy = mouse.y - p.y, dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 100) { let force = (100 - dist) / 100; p.vx -= (dx / dist) * force * 5; p.vy -= (dy / dist) * force * 5; }
+
+            let noiseX = 0, noiseY = 0;
+            if (audioForce > 0.01) {
+                const phase = i * 0.01;
+                noiseX = (Math.sin(time + phase * complexity) * 25 + Math.sin(time * 1.2 - phase) * 15) * audioForce;
+                noiseY = (Math.cos(time * 0.9 + phase * complexity) * 25 + Math.cos(time * 1.4 + phase) * 15) * audioForce;
+            }
+
+            p.vx += (p.baseX + noiseX - p.x) * 0.15;
+            p.vy += (p.baseY + noiseY - p.y) * 0.15;
+            p.x += p.vx; p.y += p.vy; p.vx *= 0.7; p.vy *= 0.7;
+            _gctx.moveTo(p.x, p.y); _gctx.arc(p.x, p.y, spread * 1.2, 0, Math.PI * 2);
+        });
+        _gctx.fill();
+
+        mouseTrail = mouseTrail.filter(p => now - p.birth < 2000);
+        _gctx.beginPath();
+        mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 2 * life * (p.sizeMult || 1); _gctx.moveTo(p.x, p.y); _gctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
+        _gctx.fill();
+
+        ctx.filter = `url(#${gooFilterId})`;
+        ctx.drawImage(_goo, 0, 0);
+        ctx.filter = 'none';
+
+        ctx.save();
+        const highlightColor = controls.get('highlightColor') || '#ffffff';
+        ctx.fillStyle = highlightColor;
+        const useBlur = controls.get('whiteTextBlur');
+        const useThreshold = controls.get('whiteTextThreshold');
+        let filterStr = '';
+        if (useBlur) filterStr += `blur(${controls.get('blurAmount') || 8}px) `;
+        if (useThreshold) {
+            const t = (controls.get('thresholdAmount') || 1) / 255;
+            const slope = 255;
+            const intercept = -slope * t + 0.5;
+            const threshFilter = document.querySelector(`#${sharpFilterId} feFuncA`);
+            if (threshFilter) { threshFilter.setAttribute('type', 'linear'); threshFilter.setAttribute('slope', slope); threshFilter.setAttribute('intercept', intercept); }
+            filterStr += `url(#${sharpFilterId}) `;
+        }
+        ctx.filter = filterStr.trim() || 'none';
+        ctx.strokeStyle = highlightColor;
+        drawDynamicBorder(ctx, w, h, (controls.get('borderThickness') || 92) * 0.6, audioForce, time, complexity);
+        ctx.beginPath();
+        particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, spread * 0.3, 0, Math.PI * 2); });
+        mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 0.5 * life * (p.sizeMult || 1); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
+        ctx.fill();
+        ctx.restore();
+
+        // Third gradient stop: a soft (blurred) inset fill -- further inside
+        // than the highlight, so the frame/title reads as a 3-colour gradient
+        // (textColor -> highlightColor -> innerColor, outer to inner).
+        if (controls.get('showInner')) {
+            ctx.save();
+            const innerColor = controls.get('innerColor') || '#FFFFFF';
+            ctx.fillStyle = innerColor;
+            ctx.strokeStyle = innerColor;
+            ctx.filter = controls.get('whiteTextBlur') ? `blur(${controls.get('blurAmount') || 8}px)` : 'none';
+            drawDynamicBorder(ctx, w, h, (controls.get('borderThickness') || 92) * 0.32, audioForce, time, complexity);
+            ctx.beginPath();
+            particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, Math.max(0.5, spread * 0.16), 0, Math.PI * 2); });
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    const subtitle = controls.get('subtitle');
+    const bottomText = controls.get('bottomText');
+    const font = controls.get('fontPicker') || {family: 'system-ui', weight: 400};
+
+    if (subtitle) {
+        ctx.save();
+        ctx.fillStyle = textColor;
+        const subSize = controls.get('subtitleSize') || 32;
+        ctx.font = `${font.weight || 400} ${subSize}px ${font.family || 'system-ui'}`;
+        const subPos = controls.get('subtitlePosition') || 'Top Left';
+        const pad = controls.get('borderPadding') || 0;
+        if (subPos === 'Top Right') { ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(subtitle, w - pad - 20, pad + 20); }
+        else if (subPos === 'Top Left') { ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(subtitle, pad + 20, pad + 20); }
+        else { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(subtitle, w/2, h/2 - 150); }
+        ctx.restore();
+    }
+
+    if (bottomText) {
+        ctx.save();
+        ctx.fillStyle = textColor;
+        const btmSize = controls.get('bottomTextSize') || 32;
+        ctx.font = `${font.weight || 400} ${btmSize}px ${font.family || 'system-ui'}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(bottomText, w/2, h - (controls.get('borderPadding') || 0) - 60);
+        ctx.restore();
+    }
+
+    if (controls.get('showAudioDebug')) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(10, 10, 300, 80);
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '12px monospace';
+        ctx.fillText(`Status: ${audioStatusMsg}`, 20, 30);
+        ctx.fillText(`Context: ${audioContext ? audioContext.state : 'null'}`, 20, 50);
+        ctx.fillText(`Level: ${audioLevel.toFixed(4)}`, 20, 70);
+        ctx.restore();
+    }
+
+    requestAnimationFrame(draw);
+}
+draw();
+    }
+  </script>
+</body>
+</html>
