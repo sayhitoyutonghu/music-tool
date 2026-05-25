@@ -63,6 +63,14 @@
     <h1>UNTRANSLATED TOOL</h1>
 
     <div class="field">
+      <label>Export</label>
+      <button data-action="exportPng">Export PNG</button>
+      <button class="secondary" data-action="recordVideo">Record Video</button>
+    </div>
+
+    <hr>
+
+    <div class="field">
       <label>Canvas Size</label>
       <select data-key="sizePreset">
         <option>Custom</option>
@@ -129,6 +137,14 @@
     <div class="field check">
       <input type="checkbox" data-key="fillWidth" id="cb-fillWidth">
       <label for="cb-fillWidth">Fill Width (fuse title to side borders)</label>
+    </div>
+    <div class="field">
+      <label>Title Position</label>
+      <select data-key="positionV">
+        <option>Top</option>
+        <option>Center</option>
+        <option>Bottom</option>
+      </select>
     </div>
     <div class="field">
       <label>Font Size <span class="val"></span></label>
@@ -529,6 +545,68 @@ controls.onAction('checkStatus', () => {
         audioStatusMsg = `State: ${audioContext.state} | Playing: ${isAudioPlaying} | Level: ${audioLevel.toFixed(2)}`;
     }
     console.log("Audio Status:", audioStatusMsg);
+});
+
+function _downloadBlob(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+controls.onAction('exportPng', () => {
+    try {
+        canvasEl.toBlob((blob) => {
+            if (blob) _downloadBlob(blob, 'untranslated.png');
+        }, 'image/png');
+    } catch (e) {
+        console.error('PNG export failed', e);
+        alert('Export failed — the loaded image may be cross-origin. Upload a local image instead.');
+    }
+});
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+controls.onAction('recordVideo', () => {
+    const btn = document.querySelector('[data-action="recordVideo"]');
+    if (isRecording) {
+        if (mediaRecorder) mediaRecorder.stop();
+        return;
+    }
+    let stream;
+    try {
+        stream = canvasEl.captureStream(60);
+    } catch (e) {
+        alert('Screen recording not supported in this browser.');
+        return;
+    }
+    // Include the playing audio track if the audio graph is live.
+    if (audioContext && audioSourceNode) {
+        try {
+            const dest = audioContext.createMediaStreamDestination();
+            audioSourceNode.connect(dest);
+            dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+        } catch (e) { /* audio capture optional */ }
+    }
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : (MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '');
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        _downloadBlob(blob, 'untranslated.webm');
+        isRecording = false;
+        if (btn) btn.textContent = 'Record Video';
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    if (btn) btn.textContent = 'Stop Recording';
 });
 
 controls.onChange('audioFile', (file) => {
