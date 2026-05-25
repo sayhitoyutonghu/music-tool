@@ -1074,11 +1074,46 @@ function buildPattern() {
   draw();
 }
 
+<<<<<<< Updated upstream
 function drawSmoothStroke(points, width, progress, phase) {
   if (points.length < 2 || progress <= 0) return;
   const mode = colorModes[state.colorChoice];
   const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
   const animatedNoise = state.animate ? Math.sin(performance.now() * 0.002 + phase) * state.audioLevel * 3 : 0;
+=======
+function segmentWidth(baseWidth, t, phase) {
+  const widthVariation = clamp(state.widthVariation, 0, 1);
+  const taperStrength = clamp(state.taperStrength, 0, 1);
+  const tt = clamp(t, 0, 1);
+
+  // Per-path organic identity so each stroke bulges/necks differently.
+  const seedA = phase * 1.31 + 2.17;
+  const seedB = phase * 2.07 + 5.43;
+  const lobes = 1 + Math.floor(stableNoise(seedA) * 3);          // 1..3 thick nodes along the path
+  const lobePhase = stableNoise(seedB) * Math.PI * 2;
+
+  // Low-frequency lobes create the "bulb" thick spots, biased to peak near 1 so
+  // necks (thin) read clearly between them.
+  const lobeWave = 0.5 + 0.5 * Math.sin(tt * Math.PI * 2 * lobes + lobePhase);
+  const bulge = Math.pow(lobeWave, 1.6);
+
+  // Mid + high frequency noise breaks any mechanical regularity in the necks.
+  const ripple = 0.5 + 0.5 * Math.sin(tt * Math.PI * 6.3 + phase * 1.7);
+  const grain = stableNoise(tt * 7.91 + phase * 3.3) - 0.5;
+
+  let profile = 0.32 + bulge * 0.78 + ripple * 0.12 + grain * 0.18;
+  profile = clamp(profile, 0.12, 1.18);
+
+  // widthVariation drives how strongly thick/thin diverge from the mean.
+  const variationScale = (1 - widthVariation) * 0.85 + profile * (0.55 + widthVariation * 1.05);
+
+  // Soft taper to a point at both ends so strokes feel naturally drawn.
+  const edgeFalloff = Math.pow(Math.sin(Math.PI * tt), 0.85);
+  const taperScale = (1 - taperStrength) + taperStrength * (0.12 + edgeFalloff * 0.88);
+
+  return Math.max(0.3, baseWidth * variationScale * taperScale);
+}
+>>>>>>> Stashed changes
 
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -1223,6 +1258,7 @@ function drawBorderText() {
     { x: rect.right - w * 0.16, y: rect.top - size * 0.34 * spread, angle: -0.12, phrase: phrases[1] || phrases[0], alpha: 0.38 },
   ];
 
+<<<<<<< Updated upstream
   for (const placement of placements) {
     drawOutlinedText(
       placement.phrase,
@@ -1231,6 +1267,310 @@ function drawBorderText() {
       placement.angle,
       size * (placement.alpha > 0.9 ? 1 : 0.78),
       placement.alpha,
+=======
+function forEachPathSegment(callback) {
+  for (const path of state.paths) {
+    callback(path.points, path.width, state.progress, path.phase);
+    const branchProgress = clamp(state.progress * 1.2 - 0.15, 0, 1);
+    for (const branch of path.branches) {
+      callback(branch.points, branch.width, branchProgress, path.phase + 1.7);
+    }
+  }
+}
+
+function drawPathMask(targetCtx, widthScale = 1, expandPx = 0) {
+  targetCtx.save();
+  targetCtx.clearRect(0, 0, targetCtx.canvas.width, targetCtx.canvas.height);
+  paintPathMask(targetCtx, widthScale, expandPx);
+  targetCtx.restore();
+}
+
+function paintPathMask(targetCtx, widthScale = 1, expandPx = 0, alpha = 1) {
+  targetCtx.save();
+  targetCtx.strokeStyle = "#ffffff";
+  targetCtx.globalAlpha = clamp(alpha, 0, 1);
+  targetCtx.lineCap = "round";
+  targetCtx.lineJoin = "round";
+  const expand = Math.max(0, expandPx);
+  forEachPathSegment((points, width, progress, phase = 0) => {
+    if (points.length < 2 || progress <= 0) return;
+    const drawCount = clamp(Math.ceil(points.length * progress), 2, points.length);
+    const baseWidth = width * widthScale;
+    // Stroke each segment with the same thick/thin profile as the visible
+    // pattern so the bubble shell bulges at nodes and necks down between them.
+    for (let i = 1; i < drawCount; i += 1) {
+      const t = i / (drawCount - 1);
+      const localWidth = segmentWidth(baseWidth, t, phase);
+      // Inflate thick parts more than thin necks so blobs stay fluid (image 1).
+      const ratio = clamp(localWidth / Math.max(0.5, baseWidth), 0.1, 1.3);
+      const localExpand = expand * (0.4 + 0.6 * ratio);
+      targetCtx.lineWidth = Math.max(0.2, localWidth + localExpand * 2);
+      targetCtx.beginPath();
+      targetCtx.moveTo(points[i - 1].x, points[i - 1].y);
+      targetCtx.lineTo(points[i].x, points[i].y);
+      targetCtx.stroke();
+    }
+  });
+  targetCtx.restore();
+}
+
+function createFxCanvas(scale = 1) {
+  const fxCanvas = document.createElement("canvas");
+  fxCanvas.width = Math.max(1, Math.round(canvas.width * scale));
+  fxCanvas.height = Math.max(1, Math.round(canvas.height * scale));
+  return fxCanvas;
+}
+
+function drawExpandedPathMask(widthScale, expandPx, blurPx = 0, scale = 1) {
+  const maskCanvas = createFxCanvas(scale);
+  const maskCtx = maskCanvas.getContext("2d");
+  maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+  maskCtx.save();
+  maskCtx.scale(scale, scale);
+  if (blurPx > 0) maskCtx.filter = `blur(${(blurPx * scale).toFixed(2)}px)`;
+  paintPathMask(maskCtx, widthScale, expandPx);
+  maskCtx.restore();
+  return maskCanvas;
+}
+
+function thresholdMask(sourceCanvas, alphaCutoff = 24) {
+  const sourceCtx = sourceCanvas.getContext("2d");
+  const image = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const data = image.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3] >= alphaCutoff ? 255 : 0;
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+    data[i + 3] = alpha;
+  }
+
+  const maskCanvas = createFxCanvas();
+  maskCanvas.width = sourceCanvas.width;
+  maskCanvas.height = sourceCanvas.height;
+  maskCanvas.getContext("2d").putImageData(image, 0, 0);
+  return maskCanvas;
+}
+
+function thresholdMaskWithTexture(sourceCanvas, alphaCutoff = 24, roughness = 0, phase = 0) {
+  const sourceCtx = sourceCanvas.getContext("2d");
+  const image = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const data = image.data;
+  const width = sourceCanvas.width;
+  const grain = clamp(roughness, 0, 1);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const p = i / 4;
+    const x = p % width;
+    const y = Math.floor(p / width);
+    const cloudy = stableNoise(x * 0.131 + y * 0.071 + phase * 19.7);
+    const scratch = stableNoise(x * 0.53 + y * 1.77 + phase * 31.1);
+    const cutoff = alphaCutoff + (cloudy - 0.5) * 72 * grain;
+    const keep = data[i + 3] >= cutoff && scratch > 0.04 + grain * 0.11;
+    const brokenEdge = data[i + 3] > alphaCutoff * 0.5 && cloudy > 0.82 - grain * 0.22;
+    const alpha = keep || brokenEdge ? clamp(data[i + 3] * (0.62 + cloudy * 0.55), 0, 255) : 0;
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+    data[i + 3] = alpha;
+  }
+
+  const maskCanvas = createFxCanvas();
+  maskCanvas.width = sourceCanvas.width;
+  maskCanvas.height = sourceCanvas.height;
+  maskCanvas.getContext("2d").putImageData(image, 0, 0);
+  return maskCanvas;
+}
+
+function erodeMask(sourceCanvas, iterations) {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const sourceCtx = sourceCanvas.getContext("2d");
+  const source = sourceCtx.getImageData(0, 0, width, height).data;
+  let alpha = new Uint8Array(width * height);
+  for (let i = 0, p = 0; i < source.length; i += 4, p += 1) {
+    alpha[p] = source[i + 3] > 0 ? 255 : 0;
+  }
+
+  const passes = Math.max(0, Math.round(iterations));
+  for (let pass = 0; pass < passes; pass += 1) {
+    const next = new Uint8Array(alpha.length);
+    for (let y = 1; y < height - 1; y += 1) {
+      const row = y * width;
+      for (let x = 1; x < width - 1; x += 1) {
+        const p = row + x;
+        if (
+          alpha[p] &&
+          alpha[p - 1] &&
+          alpha[p + 1] &&
+          alpha[p - width] &&
+          alpha[p + width] &&
+          alpha[p - width - 1] &&
+          alpha[p - width + 1] &&
+          alpha[p + width - 1] &&
+          alpha[p + width + 1]
+        ) {
+          next[p] = 255;
+        }
+      }
+    }
+    alpha = next;
+  }
+
+  const output = sourceCtx.createImageData(width, height);
+  for (let p = 0, i = 0; p < alpha.length; p += 1, i += 4) {
+    output.data[i] = 255;
+    output.data[i + 1] = 255;
+    output.data[i + 2] = 255;
+    output.data[i + 3] = alpha[p];
+  }
+
+  const erodedCanvas = createFxCanvas();
+  erodedCanvas.width = width;
+  erodedCanvas.height = height;
+  erodedCanvas.getContext("2d").putImageData(output, 0, 0);
+  return erodedCanvas;
+}
+
+function subtractMask(baseMask, subtractCanvas) {
+  const result = createFxCanvas();
+  result.width = baseMask.width;
+  result.height = baseMask.height;
+  const resultCtx = result.getContext("2d");
+  resultCtx.drawImage(baseMask, 0, 0);
+  resultCtx.globalCompositeOperation = "destination-out";
+  resultCtx.drawImage(subtractCanvas, 0, 0);
+  return result;
+}
+
+function tintedMaskLayer(maskCanvas, color, alpha) {
+  const layer = createFxCanvas();
+  layer.width = maskCanvas.width;
+  layer.height = maskCanvas.height;
+  const layerCtx = layer.getContext("2d");
+  layerCtx.drawImage(maskCanvas, 0, 0);
+  layerCtx.globalCompositeOperation = "source-in";
+  layerCtx.fillStyle = colorToRgba(color, alpha);
+  layerCtx.fillRect(0, 0, layer.width, layer.height);
+  return layer;
+}
+
+function drawFxLayer(layer, composite = "source-over", alpha = 1) {
+  ctx.save();
+  ctx.globalCompositeOperation = composite;
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.drawImage(layer, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+function drawGlassPolishFx() {
+  if (!state.fxGlassPolish) return;
+  const opacity = clamp(state.fxGlassOpacity, 0, 1);
+  const shine = clamp(state.fxGlassShine, 0, 1);
+  if (opacity < 0.01 && shine < 0.01) return;
+
+  const scale = Math.min(1, 1800 / Math.max(canvas.width, canvas.height));
+  const bubbleAmount = clamp(state.fxBubbleStrength, 0, 1);
+  const bodyExpandPx = 24 + bubbleAmount * 34 + state.fxBubbleOutlinePx * 0.9;
+  const shellWidthScale = 1.14 + bubbleAmount * 0.2;
+  const glassColor = state.fxBubbleGlowColor || "#bfffd6";
+  const lightColor = mixRgb(glassColor, "#ffffff", 0.48);
+  const midColor = mixRgb(glassColor, "#ffffff", 0.14);
+  const darkColor = mixRgb(glassColor, "#000000", 0.34);
+
+  const softUnion = drawExpandedPathMask(shellWidthScale, bodyExpandPx, 7 + bubbleAmount * 10, scale);
+  const bodyMask = thresholdMask(softUnion, 10 + (1 - opacity) * 9);
+  const innerMask = erodeMask(bodyMask, Math.max(1, (5 + state.fxBubbleOutlinePx * 0.55) * scale));
+  const rimMask = subtractMask(bodyMask, innerMask);
+
+  const glassLayer = createFxCanvas(scale);
+  glassLayer.width = bodyMask.width;
+  glassLayer.height = bodyMask.height;
+  const glassCtx = glassLayer.getContext("2d");
+  glassCtx.drawImage(bodyMask, 0, 0);
+  glassCtx.globalCompositeOperation = "source-in";
+  const glassGradient = glassCtx.createLinearGradient(0, 0, glassLayer.width, glassLayer.height);
+  glassGradient.addColorStop(0, colorToRgba(lightColor, 0.12 + opacity * 0.2));
+  glassGradient.addColorStop(0.44, colorToRgba(midColor, 0.08 + opacity * 0.18));
+  glassGradient.addColorStop(1, colorToRgba(darkColor, 0.04 + opacity * 0.14));
+  glassCtx.fillStyle = glassGradient;
+  glassCtx.fillRect(0, 0, glassLayer.width, glassLayer.height);
+  drawFxLayer(glassLayer, "source-over", 0.86);
+
+  const depthLayer = createFxCanvas(scale);
+  depthLayer.width = bodyMask.width;
+  depthLayer.height = bodyMask.height;
+  const depthCtx = depthLayer.getContext("2d");
+  depthCtx.drawImage(innerMask, 0, 0);
+  depthCtx.globalCompositeOperation = "source-in";
+  const depthGradient = depthCtx.createRadialGradient(
+    depthLayer.width * 0.42,
+    depthLayer.height * 0.25,
+    depthLayer.width * 0.05,
+    depthLayer.width * 0.6,
+    depthLayer.height * 0.72,
+    Math.max(depthLayer.width, depthLayer.height) * 0.66,
+  );
+  depthGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+  depthGradient.addColorStop(0.54, colorToRgba(darkColor, opacity * 0.04));
+  depthGradient.addColorStop(1, colorToRgba(darkColor, opacity * 0.16));
+  depthCtx.fillStyle = depthGradient;
+  depthCtx.fillRect(0, 0, depthLayer.width, depthLayer.height);
+  drawFxLayer(depthLayer, "multiply", 0.58 + opacity * 0.18);
+
+  const pathGlowLayer = createFxCanvas(scale);
+  const pathGlowCtx = pathGlowLayer.getContext("2d");
+  pathGlowCtx.save();
+  pathGlowCtx.scale(scale, scale);
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(points, width, progress, glassColor, opacity * (0.08 + shine * 0.14), {
+      widthScale: 1.25 + shine * 0.36,
+      expandPx: bodyExpandPx * (0.08 + shine * 0.18),
+      blur: (8 + shine * 12) * scale,
+    }, pathGlowCtx);
+    strokePolyline(points, width, progress, "#ffffff", shine * (0.05 + opacity * 0.12), {
+      widthScale: 0.92 + shine * 0.22,
+      expandPx: bodyExpandPx * 0.04,
+      blur: (3 + shine * 5) * scale,
+      offsetX: -1.8 - shine * 1.2,
+      offsetY: -1.8 - shine * 1.2,
+    }, pathGlowCtx);
+  });
+  pathGlowCtx.restore();
+  pathGlowCtx.globalCompositeOperation = "destination-in";
+  pathGlowCtx.drawImage(bodyMask, 0, 0);
+  drawFxLayer(pathGlowLayer, "screen", 0.72 + shine * 0.2);
+
+  const rimLayer = tintedMaskLayer(rimMask, "#ffffff", 0.18 + shine * 0.26);
+  const rimCtx = rimLayer.getContext("2d");
+  rimCtx.save();
+  rimCtx.globalCompositeOperation = "screen";
+  rimCtx.filter = `blur(${Math.max(0.8, (1.3 + shine * 1.8) * scale).toFixed(2)}px)`;
+  rimCtx.drawImage(tintedMaskLayer(rimMask, "#ffffff", 0.2 + shine * 0.22), 0, 0);
+  rimCtx.restore();
+  drawFxLayer(rimLayer, "screen", 0.68 + shine * 0.18);
+}
+
+function drawEdgeLightShadowFx() {
+  if (!state.fxEdgeLightShadow) return;
+  const amount = clamp(state.fxEdgeStrength, 0, 1);
+  if (amount < 0.01) return;
+
+  const lightOffset = 0.4 + amount * 2.8;
+  const blur = 0.8 + amount * 4.8;
+  const light = mixRgb(state.strokeColor, "#ffffff", 0.8);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  forEachPathSegment((points, width, progress) => {
+    strokePolyline(
+      points,
+      width,
+      progress,
+      `#${light.r.toString(16).padStart(2, "0")}${light.g.toString(16).padStart(2, "0")}${light.b.toString(16).padStart(2, "0")}`,
+      (0.1 + amount * 0.36) * state.strokeAlpha,
+      { widthScale: 1.55 + amount * 0.5, blur, offsetX: -lightOffset, offsetY: -lightOffset },
+>>>>>>> Stashed changes
     );
   }
 <<<<<<< Updated upstream
