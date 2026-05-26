@@ -227,6 +227,14 @@
       <label>Element Opacity <span class="val"></span></label>
       <input type="range" data-key="elementOpacity" min="0" max="100" step="1">
     </div>
+    <div class="field check">
+      <input type="checkbox" data-key="showTexture" id="cb-showTexture">
+      <label for="cb-showTexture">Show Texture Layer</label>
+    </div>
+    <div class="field check">
+      <input type="checkbox" data-key="transparentBg" id="cb-transparentBg">
+      <label for="cb-transparentBg">Transparent Background (hide image + texture)</label>
+    </div>
     <div class="field">
       <label>Subtitle</label>
       <input type="text" data-key="subtitle">
@@ -307,7 +315,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5,"showTexture":true,"transparentBg":false};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -950,8 +958,10 @@ function draw() {
 
     ctx.clearRect(0, 0, w, h);
 
+    const transparentBg = controls.get('transparentBg') === true;
+
     updateElementImage();
-    if (elementImageObj && elementImageObj.complete) {
+    if (!transparentBg && elementImageObj && elementImageObj.complete) {
         ctx.save();
         ctx.globalAlpha = (controls.get('elementOpacity') ?? 100) / 100;
         CanvasRuntimeAPI.drawImage(ctx, elementImageObj, 0, 0, w, h, 'cover');
@@ -968,7 +978,7 @@ function draw() {
     }
 
     updateBgTexture();
-    if (bgTextureObj && bgTextureObj.complete) {
+    if (controls.get('showTexture') !== false && !transparentBg && bgTextureObj && bgTextureObj.complete) {
         ctx.save();
         ctx.globalAlpha = texOpacity;
         ctx.globalCompositeOperation = controls.get('bgTextureBlend') || 'overlay';
