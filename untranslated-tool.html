@@ -137,7 +137,7 @@
     </div>
     <div class="field check">
       <input type="checkbox" data-key="fillWidth" id="cb-fillWidth">
-      <label for="cb-fillWidth">Fill Width (fuse title to side borders)</label>
+      <label for="cb-fillWidth">Responsive Title (auto-fill canvas width)</label>
     </div>
     <div class="field">
       <label>Title Position</label>
@@ -979,10 +979,6 @@ function draw() {
     const textColor = controls.get('textColor') || '#BDC273';
     const baseSpread = controls.get('inkSpread') || 20;
     const spread = baseSpread + audioForce * 4.0;
-    // When the title is set to static, its particles ignore the audio pulse
-    // (no size change, no jitter) so the text stays put while the frame reacts.
-    const titleReactive = controls.get('titleReactive') !== false;
-    const titleSpread = titleReactive ? spread : baseSpread;
 
     if (mode === 'Ink' || mode === 'Audio Pulse') {
         const blurNode = document.getElementById(`${gooFilterId}-blur`);
