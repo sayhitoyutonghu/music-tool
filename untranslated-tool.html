@@ -110,6 +110,10 @@
         <input type="text" data-key="highlightColor">
       </div>
     </div>
+    <div class="field">
+      <label>Title Outline Thickness <span class="val"></span></label>
+      <input type="range" data-key="highlightSize" min="0.18" max="1" step="0.02">
+    </div>
     <div class="field check">
       <input type="checkbox" data-key="showInner" id="cb-showInner">
       <label for="cb-showInner">Third Gradient Color</label>
@@ -315,7 +319,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5,"showTexture":true,"transparentBg":false};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -1052,9 +1056,10 @@ function draw() {
         }
         ctx.filter = filterStr.trim() || 'none';
         ctx.strokeStyle = highlightColor;
+        const hlSize = controls.get('highlightSize') ?? 0.3;
         drawDynamicBorder(ctx, w, h, (controls.get('borderThickness') || 92) * 0.6, audioForce, time, complexity);
         ctx.beginPath();
-        particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, spread * 0.3, 0, Math.PI * 2); });
+        particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, spread * hlSize, 0, Math.PI * 2); });
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 0.5 * life * (p.sizeMult || 1); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         ctx.fill();
         ctx.restore();
