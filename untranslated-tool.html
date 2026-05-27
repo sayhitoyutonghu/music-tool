@@ -320,14 +320,6 @@
           <input type="checkbox" data-key="transparentBg" id="cb-transparentBg">
           <label for="cb-transparentBg">Transparent Background</label>
         </div>
-        <div class="field stack">
-          <label>Subtitle</label>
-          <input type="text" data-key="subtitle">
-        </div>
-        <div class="field stack">
-          <label>Bottom Text</label>
-          <input type="text" data-key="bottomText">
-        </div>
       </div>
     </section>
   </aside>
@@ -843,7 +835,35 @@ function _detectGooUrlSupport() {
         return tc.getImageData(10, 10, 1, 1).data[3] < 40;
     } catch (e) { return false; }
 }
-function applyGoo(srcCanvas, dstCtx, stdDev) {
+// Separable box blur (3 passes ~= Gaussian) on a single channel buffer.
+// O(n) per pass regardless of radius via a sliding window sum. Pure JS, so it
+// does NOT depend on ctx.filter (which is unsupported on older iOS Safari).
+let _gooA, _gooB;
+function _boxBlur1D(src, dst, w, h, r, horizontal) {
+    const norm = 1 / (2 * r + 1);
+    const len = horizontal ? w : h;
+    const lines = horizontal ? h : w;
+    const step = horizontal ? 1 : w;       // index stride along the blur axis
+    const lineStep = horizontal ? w : 1;   // index stride between lines
+    for (let l = 0; l < lines; l++) {
+        const base = l * lineStep;
+        let sum = 0;
+        for (let i = -r; i <= r; i++) sum += src[base + Math.min(len - 1, Math.max(0, i)) * step];
+        for (let x = 0; x < len; x++) {
+            dst[base + x * step] = sum * norm;
+            const add = base + Math.min(len - 1, x + r + 1) * step;
+            const sub = base + Math.max(0, x - r) * step;
+            sum += src[add] - src[sub];
+        }
+    }
+}
+function _parseHexRgb(hex) {
+    let h = String(hex || '').replace('#', '');
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return { r: 0, g: 0, b: 0 };
+    return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) };
+}
+function applyGoo(srcCanvas, dstCtx, stdDev, fillColor) {
     if (_gooUrlSupported === null) _gooUrlSupported = _detectGooUrlSupport();
     if (_gooUrlSupported) {
         dstCtx.filter = `url(#${gooFilterId})`;
@@ -851,17 +871,25 @@ function applyGoo(srcCanvas, dstCtx, stdDev) {
         dstCtx.filter = 'none';
         return;
     }
-    const cw = srcCanvas.width, ch = srcCanvas.height;
+    // --- Fallback for Safari/iOS: manual blur + alpha threshold, no ctx.filter ---
+    const cw = srcCanvas.width, ch = srcCanvas.height, n = cw * ch;
     _gooOut.width = cw; _gooOut.height = ch;
-    _gctxOut.clearRect(0, 0, cw, ch);
-    _gctxOut.filter = `blur(${stdDev}px)`;       // no-op on iOS < 17, but never crashes
-    _gctxOut.drawImage(srcCanvas, 0, 0);
-    _gctxOut.filter = 'none';
-    const img = _gctxOut.getImageData(0, 0, cw, ch);
+    const img = srcCanvas.getContext('2d').getImageData(0, 0, cw, ch);
     const d = img.data;
-    for (let i = 3; i < d.length; i += 4) {
-        const na = (d[i] / 255) * 80 - 40;       // matches feColorMatrix alpha row
-        d[i] = na <= 0 ? 0 : na >= 1 ? 255 : Math.round(na * 255);
+    if (!_gooA || _gooA.length < n) { _gooA = new Float32Array(n); _gooB = new Float32Array(n); }
+    const A = _gooA, B = _gooB;
+    for (let i = 0; i < n; i++) A[i] = d[i * 4 + 3];
+    const r = Math.max(1, Math.round(stdDev));
+    for (let pass = 0; pass < 3; pass++) {
+        _boxBlur1D(A, B, cw, ch, r, true);
+        _boxBlur1D(B, A, cw, ch, r, false);
+    }
+    const rgb = _parseHexRgb(fillColor);
+    for (let i = 0; i < n; i++) {
+        let a = (A[i] / 255) * 80 - 40;          // matches feColorMatrix alpha row
+        a = a <= 0 ? 0 : a >= 1 ? 255 : a * 255;
+        const o = i * 4;
+        d[o] = rgb.r; d[o + 1] = rgb.g; d[o + 2] = rgb.b; d[o + 3] = a;
     }
     _gctxOut.putImageData(img, 0, 0);
     dstCtx.drawImage(_gooOut, 0, 0);
@@ -1195,7 +1223,7 @@ function draw() {
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 2 * life * (p.sizeMult || 1); _gctx.moveTo(p.x, p.y); _gctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         _gctx.fill();
 
-        applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1));
+        applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1), textColor);
 
         ctx.save();
         const highlightColor = controls.get('highlightColor') || '#ffffff';
@@ -1237,33 +1265,6 @@ function draw() {
             ctx.fill();
             ctx.restore();
         }
-    }
-
-    const subtitle = controls.get('subtitle');
-    const bottomText = controls.get('bottomText');
-    const font = controls.get('fontPicker') || {family: 'system-ui', weight: 400};
-
-    if (subtitle) {
-        ctx.save();
-        ctx.fillStyle = textColor;
-        const subSize = controls.get('subtitleSize') || 32;
-        ctx.font = `${font.weight || 400} ${subSize}px ${font.family || 'system-ui'}`;
-        const subPos = controls.get('subtitlePosition') || 'Top Left';
-        const pad = controls.get('borderPadding') || 0;
-        if (subPos === 'Top Right') { ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(subtitle, w - pad - 20, pad + 20); }
-        else if (subPos === 'Top Left') { ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(subtitle, pad + 20, pad + 20); }
-        else { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(subtitle, w/2, h/2 - 150); }
-        ctx.restore();
-    }
-
-    if (bottomText) {
-        ctx.save();
-        ctx.fillStyle = textColor;
-        const btmSize = controls.get('bottomTextSize') || 32;
-        ctx.font = `${font.weight || 400} ${btmSize}px ${font.family || 'system-ui'}`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ctx.fillText(bottomText, w/2, h - (controls.get('borderPadding') || 0) - 60);
-        ctx.restore();
     }
 
     if (_audioStatusEl) {
