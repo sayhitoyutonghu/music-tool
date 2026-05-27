@@ -811,13 +811,61 @@ svg.innerHTML = `
 `;
 document.body.appendChild(svg);
 
-const _offscreen = new OffscreenCanvas(1, 1);
+// Plain <canvas> elements (NOT OffscreenCanvas): OffscreenCanvas is missing on
+// older iOS Safari and would crash this whole module at load.
+const _offscreen = document.createElement('canvas'); _offscreen.width = _offscreen.height = 1;
 const _offCtx = _offscreen.getContext('2d', { willReadFrequently: true });
 
 // Separate offscreen used to composite the border + title as ONE shape before
 // the goo filter, so the metaball treats frame + title as a single whole.
-const _goo = new OffscreenCanvas(1, 1);
+const _goo = document.createElement('canvas'); _goo.width = _goo.height = 1;
 const _gctx = _goo.getContext('2d');
+
+// --- Cross-browser goo metaball compositor ---
+// Safari / iOS canvas2d does NOT apply SVG url(#filter) references, so the goo
+// blur silently does nothing there. Detect that once and fall back to a native
+// blur() + alpha-threshold pass (equivalent to the feGaussianBlur + feColorMatrix
+// "...0 0 0 80 -40" the SVG filter uses).
+const _gooOut = document.createElement('canvas');
+const _gctxOut = _gooOut.getContext('2d', { willReadFrequently: true });
+let _gooUrlSupported = null;
+function _detectGooUrlSupport() {
+    try {
+        const t = document.createElement('canvas'); t.width = t.height = 20;
+        const tc = t.getContext('2d', { willReadFrequently: true });
+        const src = document.createElement('canvas'); src.width = src.height = 20;
+        const sc = src.getContext('2d');
+        sc.fillStyle = 'rgba(255,255,255,0.3)'; sc.fillRect(0, 0, 20, 20);
+        tc.filter = `url(#${gooFilterId})`;
+        tc.drawImage(src, 0, 0);
+        tc.filter = 'none';
+        // 30% alpha gets thresholded to ~0 only when the url() filter is applied.
+        return tc.getImageData(10, 10, 1, 1).data[3] < 40;
+    } catch (e) { return false; }
+}
+function applyGoo(srcCanvas, dstCtx, stdDev) {
+    if (_gooUrlSupported === null) _gooUrlSupported = _detectGooUrlSupport();
+    if (_gooUrlSupported) {
+        dstCtx.filter = `url(#${gooFilterId})`;
+        dstCtx.drawImage(srcCanvas, 0, 0);
+        dstCtx.filter = 'none';
+        return;
+    }
+    const cw = srcCanvas.width, ch = srcCanvas.height;
+    _gooOut.width = cw; _gooOut.height = ch;
+    _gctxOut.clearRect(0, 0, cw, ch);
+    _gctxOut.filter = `blur(${stdDev}px)`;       // no-op on iOS < 17, but never crashes
+    _gctxOut.drawImage(srcCanvas, 0, 0);
+    _gctxOut.filter = 'none';
+    const img = _gctxOut.getImageData(0, 0, cw, ch);
+    const d = img.data;
+    for (let i = 3; i < d.length; i += 4) {
+        const na = (d[i] / 255) * 80 - 40;       // matches feColorMatrix alpha row
+        d[i] = na <= 0 ? 0 : na >= 1 ? 255 : Math.round(na * 255);
+    }
+    _gctxOut.putImageData(img, 0, 0);
+    dstCtx.drawImage(_gooOut, 0, 0);
+}
 
 canvasEl.addEventListener('mousemove', (e) => {
     const pos = CanvasRuntimeAPI.getMousePos(e);
@@ -1147,9 +1195,7 @@ function draw() {
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 2 * life * (p.sizeMult || 1); _gctx.moveTo(p.x, p.y); _gctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         _gctx.fill();
 
-        ctx.filter = `url(#${gooFilterId})`;
-        ctx.drawImage(_goo, 0, 0);
-        ctx.filter = 'none';
+        applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1));
 
         ctx.save();
         const highlightColor = controls.get('highlightColor') || '#ffffff';
