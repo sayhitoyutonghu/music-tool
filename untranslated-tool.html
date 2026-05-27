@@ -13,226 +13,323 @@
     }
     body { display: flex; }
 
-    /* --- Control panel --- */
+    /* --- Control panel (light theme, accordion sections) --- */
     #panel {
-      width: 300px; height: 100%; flex: 0 0 300px;
-      background: #1b1b1b; color: #ddd; overflow-y: auto;
-      padding: 14px; border-right: 1px solid #333;
+      width: 340px; height: 100%; flex: 0 0 340px;
+      background: #fff; color: #111; overflow-y: auto;
+      padding: 0 0 40px; border-right: 1px solid #e8e8e8;
+      font-size: 15px;
     }
-    #panel h1 { font-size: 14px; letter-spacing: .5px; margin-bottom: 12px; color: #BDC273; }
-    #panel .field { margin-bottom: 12px; }
-    #panel label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #888; margin-bottom: 4px; }
-    #panel input[type=range] { width: 100%; }
+    #panel h1 { font-size: 13px; letter-spacing: 1px; padding: 20px 22px 6px; color: #111; font-weight: 800; }
+
+    /* export bar at top */
+    #panel .export-bar { padding: 8px 22px 16px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #ececec; }
+
+    /* accordion */
+    #panel .acc { border-bottom: 1px solid #ececec; }
+    #panel .acc-head {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 22px; background: none; border: none; cursor: pointer;
+      font-size: 17px; font-weight: 700; color: #111; text-align: left; margin: 0;
+    }
+    #panel .acc-head .chev { transition: transform .25s ease; color: #111; flex: 0 0 auto; }
+    #panel .acc.open .acc-head .chev { transform: rotate(180deg); }
+    #panel .acc-body { padding: 0 22px 18px; display: none; }
+    #panel .acc.open .acc-body { display: block; }
+
+    /* generic field: label left, control right */
+    #panel .field { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+    #panel label { font-size: 15px; color: #111; font-weight: 500; flex: 0 0 auto; max-width: 44%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #panel label .val { display: none; }
+    #panel .field.stack { display: block; }
+    #panel .field.stack > label { display: block; max-width: 100%; margin-bottom: 8px; }
+
+    #panel .field > input[type=text], #panel .field > input[type=number],
+    #panel .field > select, #panel .field > textarea, #panel .field > .slider,
+    #panel .field > .row { flex: 1; min-width: 0; }
+
     #panel input[type=text], #panel input[type=number], #panel select, #panel textarea {
-      width: 100%; background: #2a2a2a; border: 1px solid #3a3a3a; color: #eee;
-      padding: 6px 8px; border-radius: 5px; font-size: 12px;
+      background: #ececec; border: none; color: #111; width: 100%;
+      padding: 12px 14px; border-radius: 10px; font-size: 14px; font-weight: 500;
+    }
+    #panel select {
+      appearance: none; -webkit-appearance: none; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23111' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px;
     }
     #panel textarea { resize: vertical; min-height: 48px; }
-    #panel input[type=file] { width: 100%; font-size: 11px; color: #bbb; }
+    #panel input[type=file] { width: 100%; font-size: 13px; color: #555; }
     #panel input[type=file]::file-selector-button {
-      background: #2a2a2a; border: 1px solid #3a3a3a; color: #eee;
-      padding: 5px 10px; border-radius: 5px; margin-right: 8px; cursor: pointer; font-size: 11px;
+      background: #ececec; border: none; color: #111;
+      padding: 8px 12px; border-radius: 8px; margin-right: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
     }
+    #panel .audio-status { font-size: 13px; color: #4a6b86; margin-top: 8px; line-height: 1.4; word-break: break-word; }
+
+    /* slider: rounded track, black fill, value centered */
+    #panel .slider { position: relative; height: 44px; border-radius: 10px; overflow: hidden; background: #ececec; }
+    #panel .slider input[type=range] {
+      position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+      -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+    }
+    #panel .slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 1px; height: 1px; opacity: 0; }
+    #panel .slider input[type=range]::-moz-range-thumb { width: 1px; height: 1px; opacity: 0; border: none; }
+    #panel .slider .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #111; pointer-events: none; }
+    #panel .slider .num {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px; pointer-events: none; color: #fff; mix-blend-mode: difference;
+    }
+
+    /* color row */
     #panel .row { display: flex; gap: 8px; align-items: center; }
-    #panel .row input[type=range] { flex: 1; }
-    #panel .val { font-size: 11px; color: #aaa; min-width: 38px; text-align: right; }
     #panel input.swatch {
-      flex: 0 0 34px; width: 34px; height: 30px; padding: 2px;
-      background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 5px; cursor: pointer;
+      flex: 0 0 40px; width: 40px; height: 40px; padding: 3px;
+      background: #ececec; border: none; border-radius: 10px; cursor: pointer;
     }
     #panel .row input[type=text] { flex: 1; }
-    #panel .check { display: flex; align-items: center; gap: 8px; }
-    #panel .check label { margin: 0; text-transform: none; color: #ccc; font-size: 12px; }
-    #panel button {
-      width: 100%; padding: 8px; margin-top: 4px; cursor: pointer;
-      background: #BDC273; color: #111; border: none; border-radius: 5px; font-weight: 600;
+    #panel .dim-label { font-size: 13px; color: #888; min-width: 12px; font-weight: 600; }
+
+    /* toggle switch */
+    #panel .check { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+    #panel .check label { order: 1; flex: 1; max-width: none; font-size: 15px; color: #111; white-space: normal; }
+    #panel .check input[type=checkbox] {
+      order: 2; appearance: none; -webkit-appearance: none; flex: 0 0 auto;
+      width: 52px; height: 30px; border-radius: 999px; background: #d6d6d6;
+      position: relative; cursor: pointer; transition: background .2s;
     }
-    #panel button.secondary { background: #333; color: #ddd; }
-    #panel hr { border: none; border-top: 1px solid #333; margin: 14px 0; }
+    #panel .check input[type=checkbox]::after {
+      content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+      border-radius: 50%; background: #fff; transition: left .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    #panel .check input[type=checkbox]:checked { background: #111; }
+    #panel .check input[type=checkbox]:checked::after { left: 25px; }
+
+    /* buttons */
+    #panel button {
+      width: 100%; padding: 12px; cursor: pointer;
+      background: #111; color: #fff; border: none; border-radius: 10px; font-weight: 700; font-size: 14px;
+    }
+    #panel button.secondary { background: #ececec; color: #111; }
 
     .tool-canvas-area {
       flex: 1; height: 100%; display: flex; align-items: center; justify-content: center;
-      position: relative; overflow: hidden;
+      position: relative; overflow: hidden; background: #111;
     }
     canvas { display: block; background: transparent; max-width: 100%; max-height: 100%; }
-    #panel .dim-label { font-size: 11px; color: #888; min-width: 12px; }
   </style>
 </head>
 <body>
   <aside id="panel">
     <h1>UNTRANSLATED TOOL</h1>
 
-    <div class="field">
-      <label>Export</label>
+    <div class="export-bar">
       <button data-action="exportPng">Export PNG</button>
       <button class="secondary" data-action="recordVideo">Record Video</button>
     </div>
 
-    <hr>
-
-    <div class="field">
-      <label>Canvas Size</label>
-      <select data-key="sizePreset">
-        <option>Custom</option>
-        <option>HD 16:9</option>
-        <option>Square 1:1</option>
-        <option>4:3</option>
-        <option>Portrait 9:16</option>
-      </select>
-    </div>
-    <div class="field">
-      <div class="row">
-        <span class="dim-label">W</span>
-        <input type="number" data-key="canvasWidth" min="1" max="4096" step="1">
-        <span class="dim-label">H</span>
-        <input type="number" data-key="canvasHeight" min="1" max="4096" step="1">
+    <section class="acc">
+      <button class="acc-head" type="button">Canvas
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field stack">
+          <label>Canvas Size</label>
+          <select data-key="sizePreset">
+            <option>Custom</option>
+            <option>HD 16:9</option>
+            <option>Square 1:1</option>
+            <option>4:3</option>
+            <option>Portrait 9:16</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="row">
+            <span class="dim-label">W</span>
+            <input type="number" data-key="canvasWidth" min="1" max="4096" step="1">
+            <span class="dim-label">H</span>
+            <input type="number" data-key="canvasHeight" min="1" max="4096" step="1">
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <hr>
-
-    <div class="field">
-      <label>Text</label>
-      <input type="text" data-key="text">
-    </div>
-    <div class="field">
-      <label>Text Color</label>
-      <div class="row">
-        <input type="color" class="swatch" data-color-for="textColor">
-        <input type="text" data-key="textColor">
+    <section class="acc open">
+      <button class="acc-head" type="button">Text &amp; Title
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field stack">
+          <label>Text</label>
+          <input type="text" data-key="text">
+        </div>
+        <div class="field stack">
+          <label>Text Color</label>
+          <div class="row">
+            <input type="color" class="swatch" data-color-for="textColor">
+            <input type="text" data-key="textColor">
+          </div>
+        </div>
+        <div class="field stack">
+          <label>Highlight Color</label>
+          <div class="row">
+            <input type="color" class="swatch" data-color-for="highlightColor">
+            <input type="text" data-key="highlightColor">
+          </div>
+        </div>
+        <div class="field">
+          <label>Title Outline <span class="val"></span></label>
+          <input type="range" data-key="highlightSize" min="0.18" max="1" step="0.02">
+        </div>
+        <div class="field check">
+          <input type="checkbox" data-key="showInner" id="cb-showInner">
+          <label for="cb-showInner">Third Gradient Color</label>
+        </div>
+        <div class="field stack">
+          <label>Inner Color (3rd gradient stop)</label>
+          <div class="row">
+            <input type="color" class="swatch" data-color-for="innerColor">
+            <input type="text" data-key="innerColor">
+          </div>
+        </div>
+        <div class="field">
+          <label>Mode</label>
+          <select data-key="mode">
+            <option>Audio Pulse</option>
+            <option>Ink</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Text Layout</label>
+          <select data-key="textLayout">
+            <option>Center</option>
+            <option>Frame</option>
+          </select>
+        </div>
+        <div class="field check">
+          <input type="checkbox" data-key="fillWidth" id="cb-fillWidth">
+          <label for="cb-fillWidth">Responsive Title (auto-fill width)</label>
+        </div>
+        <div class="field">
+          <label>Title Position</label>
+          <select data-key="positionV">
+            <option>Top</option>
+            <option>Center</option>
+            <option>Bottom</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Font Size <span class="val"></span></label>
+          <input type="range" data-key="fontSize" min="20" max="400" step="1">
+        </div>
+        <div class="field">
+          <label>Letter Spacing <span class="val"></span></label>
+          <input type="range" data-key="letterSpacing" min="-60" max="40" step="1">
+        </div>
+        <div class="field">
+          <label>Ink Spread <span class="val"></span></label>
+          <input type="range" data-key="inkSpread" min="2" max="60" step="1">
+        </div>
+        <div class="field">
+          <label>Edge Roundness <span class="val"></span></label>
+          <input type="range" data-key="edgeRound" min="1" max="3" step="0.1">
+        </div>
+        <div class="field">
+          <label>Blur Amount <span class="val"></span></label>
+          <input type="range" data-key="blurAmount" min="0" max="30" step="1">
+        </div>
       </div>
-    </div>
-    <div class="field">
-      <label>Highlight Color</label>
-      <div class="row">
-        <input type="color" class="swatch" data-color-for="highlightColor">
-        <input type="text" data-key="highlightColor">
+    </section>
+
+    <section class="acc">
+      <button class="acc-head" type="button">Border &amp; Frame
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field check">
+          <input type="checkbox" data-key="showBorder" id="cb-showBorder">
+          <label for="cb-showBorder">Show Border</label>
+        </div>
+        <div class="field">
+          <label>Border Thickness <span class="val"></span></label>
+          <input type="range" data-key="borderThickness" min="0" max="200" step="1">
+        </div>
+        <div class="field">
+          <label>Border Fluidity <span class="val"></span></label>
+          <input type="range" data-key="borderFluidity" min="0" max="8" step="0.1">
+        </div>
+        <div class="field">
+          <label>Border Complexity <span class="val"></span></label>
+          <input type="range" data-key="borderComplexity" min="0.5" max="6" step="0.1">
+        </div>
+        <div class="field">
+          <label>Frame Padding <span class="val"></span></label>
+          <input type="range" data-key="framePadding" min="0" max="500" step="1">
+        </div>
       </div>
-    </div>
-    <div class="field check">
-      <input type="checkbox" data-key="showInner" id="cb-showInner">
-      <label for="cb-showInner">Third Gradient Color</label>
-    </div>
-    <div class="field">
-      <label>Inner Color (3rd gradient stop)</label>
-      <div class="row">
-        <input type="color" class="swatch" data-color-for="innerColor">
-        <input type="text" data-key="innerColor">
+    </section>
+
+    <section class="acc">
+      <button class="acc-head" type="button">Audio Interaction
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field check">
+          <input type="checkbox" data-key="audioReactive" id="cb-audioReactive">
+          <label for="cb-audioReactive">Audio Reactive</label>
+        </div>
+        <div class="field check">
+          <input type="checkbox" data-key="whiteTextBlur" id="cb-whiteTextBlur">
+          <label for="cb-whiteTextBlur">White Text Blur</label>
+        </div>
+        <div class="field check">
+          <input type="checkbox" data-key="showAudioDebug" id="cb-showAudioDebug">
+          <label for="cb-showAudioDebug">Show Audio Debug</label>
+        </div>
+        <div class="field">
+          <label>Audio Sensitivity <span class="val"></span></label>
+          <input type="range" data-key="audioSensitivity" min="0" max="200" step="1">
+        </div>
+        <div class="field stack">
+          <label>Audio File (upload)</label>
+          <input type="file" accept="audio/*" data-file-for="audioFile">
+        </div>
+        <button data-action="playAudio">Play / Pause Audio</button>
+        <button class="secondary" data-action="checkStatus" style="margin-top:8px">Check Audio Status</button>
+        <div id="audioStatus" class="audio-status">Waiting for audio…</div>
       </div>
-    </div>
-    <div class="field">
-      <label>Mode</label>
-      <select data-key="mode">
-        <option>Audio Pulse</option>
-        <option>Ink</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Text Layout</label>
-      <select data-key="textLayout">
-        <option>Center</option>
-        <option>Frame</option>
-      </select>
-    </div>
-    <div class="field check">
-      <input type="checkbox" data-key="fillWidth" id="cb-fillWidth">
-      <label for="cb-fillWidth">Fill Width (fuse title to side borders)</label>
-    </div>
-    <div class="field">
-      <label>Title Position</label>
-      <select data-key="positionV">
-        <option>Top</option>
-        <option>Center</option>
-        <option>Bottom</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Font Size <span class="val"></span></label>
-      <input type="range" data-key="fontSize" min="20" max="400" step="1">
-    </div>
-    <div class="field">
-      <label>Letter Spacing <span class="val"></span></label>
-      <input type="range" data-key="letterSpacing" min="-60" max="40" step="1">
-    </div>
-    <div class="field">
-      <label>Ink Spread <span class="val"></span></label>
-      <input type="range" data-key="inkSpread" min="2" max="60" step="1">
-    </div>
-    <div class="field">
-      <label>Edge Roundness <span class="val"></span></label>
-      <input type="range" data-key="edgeRound" min="1" max="3" step="0.1">
-    </div>
-    <div class="field">
-      <label>Blur Amount <span class="val"></span></label>
-      <input type="range" data-key="blurAmount" min="0" max="30" step="1">
-    </div>
+    </section>
 
-    <hr>
-
-    <div class="field check">
-      <input type="checkbox" data-key="showBorder" id="cb-showBorder">
-      <label for="cb-showBorder">Show Border</label>
-    </div>
-    <div class="field">
-      <label>Border Thickness <span class="val"></span></label>
-      <input type="range" data-key="borderThickness" min="0" max="200" step="1">
-    </div>
-    <div class="field">
-      <label>Border Fluidity <span class="val"></span></label>
-      <input type="range" data-key="borderFluidity" min="0" max="8" step="0.1">
-    </div>
-    <div class="field">
-      <label>Border Complexity <span class="val"></span></label>
-      <input type="range" data-key="borderComplexity" min="0.5" max="6" step="0.1">
-    </div>
-    <div class="field">
-      <label>Frame Padding <span class="val"></span></label>
-      <input type="range" data-key="framePadding" min="0" max="500" step="1">
-    </div>
-
-    <hr>
-
-    <div class="field check">
-      <input type="checkbox" data-key="audioReactive" id="cb-audioReactive">
-      <label for="cb-audioReactive">Audio Reactive</label>
-    </div>
-    <div class="field check">
-      <input type="checkbox" data-key="whiteTextBlur" id="cb-whiteTextBlur">
-      <label for="cb-whiteTextBlur">White Text Blur</label>
-    </div>
-    <div class="field check">
-      <input type="checkbox" data-key="showAudioDebug" id="cb-showAudioDebug">
-      <label for="cb-showAudioDebug">Show Audio Debug</label>
-    </div>
-    <div class="field">
-      <label>Audio Sensitivity <span class="val"></span></label>
-      <input type="range" data-key="audioSensitivity" min="0" max="200" step="1">
-    </div>
-    <div class="field">
-      <label>Audio File (upload)</label>
-      <input type="file" accept="audio/*" data-file-for="audioFile">
-    </div>
-    <button data-action="playAudio">Play / Pause Audio</button>
-    <button class="secondary" data-action="checkStatus">Check Audio Status</button>
-
-    <hr>
-
-    <div class="field">
-      <label>Element Image (upload)</label>
-      <input type="file" accept="image/*" data-file-for="elementImage">
-    </div>
-    <div class="field">
-      <label>Element Opacity <span class="val"></span></label>
-      <input type="range" data-key="elementOpacity" min="0" max="100" step="1">
-    </div>
-    <div class="field">
-      <label>Subtitle</label>
-      <input type="text" data-key="subtitle">
-    </div>
-    <div class="field">
-      <label>Bottom Text</label>
-      <input type="text" data-key="bottomText">
-    </div>
+    <section class="acc">
+      <button class="acc-head" type="button">Background &amp; Image
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field stack">
+          <label>Element Image (upload)</label>
+          <input type="file" accept="image/*" data-file-for="elementImage">
+        </div>
+        <div class="field">
+          <label>Element Opacity <span class="val"></span></label>
+          <input type="range" data-key="elementOpacity" min="0" max="100" step="1">
+        </div>
+        <div class="field check">
+          <input type="checkbox" data-key="showTexture" id="cb-showTexture">
+          <label for="cb-showTexture">Show Texture Layer</label>
+        </div>
+        <div class="field check">
+          <input type="checkbox" data-key="transparentBg" id="cb-transparentBg">
+          <label for="cb-transparentBg">Transparent Background</label>
+        </div>
+        <div class="field stack">
+          <label>Subtitle</label>
+          <input type="text" data-key="subtitle">
+        </div>
+        <div class="field stack">
+          <label>Bottom Text</label>
+          <input type="text" data-key="bottomText">
+        </div>
+      </div>
+    </section>
   </aside>
 
   <div class="tool-canvas-area">
@@ -305,7 +402,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"blurAmount":5,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -410,6 +507,35 @@
       });
     })();
 
+    // ---- Accordion sections (collapsible dropdown menus) ----
+    (function accordions() {
+      document.querySelectorAll('#panel .acc-head').forEach(function(head) {
+        head.addEventListener('click', function() {
+          head.parentElement.classList.toggle('open');
+        });
+      });
+    })();
+
+    // ---- Slider styling: black fill + centered value ----
+    (function sliders() {
+      document.querySelectorAll('#panel input[type=range]').forEach(function(r) {
+        var wrap = document.createElement('div');
+        wrap.className = 'slider';
+        r.parentNode.insertBefore(wrap, r);
+        wrap.appendChild(r);
+        var fill = document.createElement('div'); fill.className = 'fill'; wrap.appendChild(fill);
+        var num = document.createElement('div'); num.className = 'num'; wrap.appendChild(num);
+        function upd() {
+          var min = parseFloat(r.min || 0), max = parseFloat(r.max || 100), v = parseFloat(r.value || 0);
+          var pct = max > min ? ((v - min) / (max - min)) * 100 : 0;
+          fill.style.width = pct + '%';
+          num.textContent = Math.round(v * 100) / 100;
+        }
+        r.addEventListener('input', upd);
+        upd();
+      });
+    })();
+
     // ======================================================================
     // CREATIVE CODE (unchanged from the brik export)
     // ======================================================================
@@ -461,6 +587,7 @@
     {
       // @clay-no-bg-control
 const canvasEl = canvas;
+const _audioStatusEl = document.getElementById('audioStatus');
 let w, h;
 let particles = [];
 let particleBounds = null;
@@ -584,7 +711,7 @@ controls.onAction('recordVideo', () => {
         alert('Screen recording not supported in this browser.');
         return;
     }
-    // Include the playing audio track if the audio graph is live.
+    // Include the playing file audio in the recording, if the graph is live.
     if (audioContext && audioSourceNode) {
         try {
             const dest = audioContext.createMediaStreamDestination();
@@ -684,13 +811,61 @@ svg.innerHTML = `
 `;
 document.body.appendChild(svg);
 
-const _offscreen = new OffscreenCanvas(1, 1);
+// Plain <canvas> elements (NOT OffscreenCanvas): OffscreenCanvas is missing on
+// older iOS Safari and would crash this whole module at load.
+const _offscreen = document.createElement('canvas'); _offscreen.width = _offscreen.height = 1;
 const _offCtx = _offscreen.getContext('2d', { willReadFrequently: true });
 
 // Separate offscreen used to composite the border + title as ONE shape before
 // the goo filter, so the metaball treats frame + title as a single whole.
-const _goo = new OffscreenCanvas(1, 1);
+const _goo = document.createElement('canvas'); _goo.width = _goo.height = 1;
 const _gctx = _goo.getContext('2d');
+
+// --- Cross-browser goo metaball compositor ---
+// Safari / iOS canvas2d does NOT apply SVG url(#filter) references, so the goo
+// blur silently does nothing there. Detect that once and fall back to a native
+// blur() + alpha-threshold pass (equivalent to the feGaussianBlur + feColorMatrix
+// "...0 0 0 80 -40" the SVG filter uses).
+const _gooOut = document.createElement('canvas');
+const _gctxOut = _gooOut.getContext('2d', { willReadFrequently: true });
+let _gooUrlSupported = null;
+function _detectGooUrlSupport() {
+    try {
+        const t = document.createElement('canvas'); t.width = t.height = 20;
+        const tc = t.getContext('2d', { willReadFrequently: true });
+        const src = document.createElement('canvas'); src.width = src.height = 20;
+        const sc = src.getContext('2d');
+        sc.fillStyle = 'rgba(255,255,255,0.3)'; sc.fillRect(0, 0, 20, 20);
+        tc.filter = `url(#${gooFilterId})`;
+        tc.drawImage(src, 0, 0);
+        tc.filter = 'none';
+        // 30% alpha gets thresholded to ~0 only when the url() filter is applied.
+        return tc.getImageData(10, 10, 1, 1).data[3] < 40;
+    } catch (e) { return false; }
+}
+function applyGoo(srcCanvas, dstCtx, stdDev) {
+    if (_gooUrlSupported === null) _gooUrlSupported = _detectGooUrlSupport();
+    if (_gooUrlSupported) {
+        dstCtx.filter = `url(#${gooFilterId})`;
+        dstCtx.drawImage(srcCanvas, 0, 0);
+        dstCtx.filter = 'none';
+        return;
+    }
+    const cw = srcCanvas.width, ch = srcCanvas.height;
+    _gooOut.width = cw; _gooOut.height = ch;
+    _gctxOut.clearRect(0, 0, cw, ch);
+    _gctxOut.filter = `blur(${stdDev}px)`;       // no-op on iOS < 17, but never crashes
+    _gctxOut.drawImage(srcCanvas, 0, 0);
+    _gctxOut.filter = 'none';
+    const img = _gctxOut.getImageData(0, 0, cw, ch);
+    const d = img.data;
+    for (let i = 3; i < d.length; i += 4) {
+        const na = (d[i] / 255) * 80 - 40;       // matches feColorMatrix alpha row
+        d[i] = na <= 0 ? 0 : na >= 1 ? 255 : Math.round(na * 255);
+    }
+    _gctxOut.putImageData(img, 0, 0);
+    dstCtx.drawImage(_gooOut, 0, 0);
+}
 
 canvasEl.addEventListener('mousemove', (e) => {
     const pos = CanvasRuntimeAPI.getMousePos(e);
@@ -947,8 +1122,10 @@ function draw() {
 
     ctx.clearRect(0, 0, w, h);
 
+    const transparentBg = controls.get('transparentBg') === true;
+
     updateElementImage();
-    if (elementImageObj && elementImageObj.complete) {
+    if (!transparentBg && elementImageObj && elementImageObj.complete) {
         ctx.save();
         ctx.globalAlpha = (controls.get('elementOpacity') ?? 100) / 100;
         CanvasRuntimeAPI.drawImage(ctx, elementImageObj, 0, 0, w, h, 'cover');
@@ -965,7 +1142,7 @@ function draw() {
     }
 
     updateBgTexture();
-    if (bgTextureObj && bgTextureObj.complete) {
+    if (controls.get('showTexture') !== false && !transparentBg && bgTextureObj && bgTextureObj.complete) {
         ctx.save();
         ctx.globalAlpha = texOpacity;
         ctx.globalCompositeOperation = controls.get('bgTextureBlend') || 'overlay';
@@ -1018,9 +1195,7 @@ function draw() {
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 2 * life * (p.sizeMult || 1); _gctx.moveTo(p.x, p.y); _gctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         _gctx.fill();
 
-        ctx.filter = `url(#${gooFilterId})`;
-        ctx.drawImage(_goo, 0, 0);
-        ctx.filter = 'none';
+        applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1));
 
         ctx.save();
         const highlightColor = controls.get('highlightColor') || '#ffffff';
@@ -1039,9 +1214,10 @@ function draw() {
         }
         ctx.filter = filterStr.trim() || 'none';
         ctx.strokeStyle = highlightColor;
+        const hlSize = controls.get('highlightSize') ?? 0.3;
         drawDynamicBorder(ctx, w, h, (controls.get('borderThickness') || 92) * 0.6, audioForce, time, complexity);
         ctx.beginPath();
-        particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, spread * 0.3, 0, Math.PI * 2); });
+        particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, spread * hlSize, 0, Math.PI * 2); });
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 0.5 * life * (p.sizeMult || 1); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         ctx.fill();
         ctx.restore();
@@ -1088,6 +1264,10 @@ function draw() {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.fillText(bottomText, w/2, h - (controls.get('borderPadding') || 0) - 60);
         ctx.restore();
+    }
+
+    if (_audioStatusEl) {
+        _audioStatusEl.textContent = audioStatusMsg + (isAudioPlaying ? '  ·  level ' + audioLevel.toFixed(2) : '');
     }
 
     if (controls.get('showAudioDebug')) {
