@@ -286,6 +286,10 @@
           <label>Frame Padding <span class="val"></span></label>
           <input type="range" data-key="framePadding" min="0" max="500" step="1">
         </div>
+        <div class="field">
+          <label>Frame Blur <span class="val"></span></label>
+          <input type="range" data-key="frameBlur" min="0" max="40" step="1">
+        </div>
       </div>
     </section>
 
@@ -411,7 +415,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"outlineBlur":5,"innerBlur":5,"textDiffusion":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"outlineBlur":5,"innerBlur":5,"textDiffusion":0,"frameBlur":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -1256,14 +1260,13 @@ function draw() {
         const complexity = controls.get('borderComplexity') ?? 1;
         const time = Date.now() * 0.001 * fluidity;
 
-        // Composite border + title + trail into ONE shape on the offscreen
-        // (no filter), then apply the goo metaball ONCE to the union. This makes
-        // frame + title a single whole -> all corners/junctions round naturally.
+        // Composite title + trail into ONE shape on the offscreen (no filter),
+        // then apply the goo metaball ONCE. The frame border is drawn separately
+        // (after applyGoo) so its blur can be controlled independently without a
+        // hard goo-thresholded base competing with the soft feathered layer.
         _goo.width = w; _goo.height = h;
         _gctx.clearRect(0, 0, w, h);
         _gctx.fillStyle = textColor; _gctx.strokeStyle = textColor;
-
-        drawDynamicBorder(_gctx, w, h, controls.get('borderThickness') || 92, audioForce, time, complexity);
 
         _gctx.beginPath();
         particles.forEach((p, i) => {
@@ -1304,6 +1307,23 @@ function draw() {
         }
 
         applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1), textColor);
+
+        // Frame border: drawn separately from the goo so its blur is fully
+        // independent of the text.  frameBlur=0 → hard opaque stroke drawn
+        // directly.  frameBlur>0 → pure-JS box-blur feathers all four edges
+        // (works on every browser / iOS Safari).
+        if (controls.get('showBorder') !== false) {
+            const frameBlur = controls.get('frameBlur') ?? 0;
+            _diff.width = w; _diff.height = h;
+            _dctx.clearRect(0, 0, w, h);
+            _dctx.fillStyle = textColor; _dctx.strokeStyle = textColor;
+            drawDynamicBorder(_dctx, w, h, controls.get('borderThickness') || 92, audioForce, time, complexity);
+            if (frameBlur > 0) {
+                _softColorBlur(_diff, ctx, frameBlur, textColor, 1);
+            } else {
+                ctx.drawImage(_diff, 0, 0);
+            }
+        }
 
         // Each colour layer has its own blur, gated by "White Text Blur":
         // Outline Blur softens the highlightColor layer (the #97df93 outline),
