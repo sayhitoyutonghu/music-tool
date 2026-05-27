@@ -154,15 +154,12 @@
     </section>
 
     <section class="acc open">
-      <button class="acc-head" type="button">Text &amp; Title
+      <button class="acc-head" type="button">Colors
         <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="acc-body">
-        <div class="field stack">
-          <label>Text</label>
-          <input type="text" data-key="text">
-        </div>
-        <div class="field stack">
+        <button data-action="randomizeColors">Randomize Colors</button>
+        <div class="field stack" style="margin-top:14px">
           <label>Text Color</label>
           <div class="row">
             <input type="color" class="swatch" data-color-for="textColor">
@@ -176,10 +173,6 @@
             <input type="text" data-key="highlightColor">
           </div>
         </div>
-        <div class="field">
-          <label>Title Outline <span class="val"></span></label>
-          <input type="range" data-key="highlightSize" min="0.18" max="1" step="0.02">
-        </div>
         <div class="field check">
           <input type="checkbox" data-key="showInner" id="cb-showInner">
           <label for="cb-showInner">Third Gradient Color</label>
@@ -190,6 +183,22 @@
             <input type="color" class="swatch" data-color-for="innerColor">
             <input type="text" data-key="innerColor">
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="acc open">
+      <button class="acc-head" type="button">Text &amp; Title
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field stack">
+          <label>Text</label>
+          <input type="text" data-key="text">
+        </div>
+        <div class="field">
+          <label>Title Outline <span class="val"></span></label>
+          <input type="range" data-key="highlightSize" min="0.18" max="1" step="0.02">
         </div>
         <div class="field">
           <label>Mode</label>
@@ -237,6 +246,10 @@
           <label>Blur Amount <span class="val"></span></label>
           <input type="range" data-key="blurAmount" min="0" max="30" step="1">
         </div>
+        <div class="field check">
+          <input type="checkbox" data-key="whiteTextBlur" id="cb-whiteTextBlur">
+          <label for="cb-whiteTextBlur">White Text Blur</label>
+        </div>
       </div>
     </section>
 
@@ -276,10 +289,6 @@
         <div class="field check">
           <input type="checkbox" data-key="audioReactive" id="cb-audioReactive">
           <label for="cb-audioReactive">Audio Reactive</label>
-        </div>
-        <div class="field check">
-          <input type="checkbox" data-key="whiteTextBlur" id="cb-whiteTextBlur">
-          <label for="cb-whiteTextBlur">White Text Blur</label>
         </div>
         <div class="field check">
           <input type="checkbox" data-key="showAudioDebug" id="cb-showAudioDebug">
@@ -675,6 +684,24 @@ function _downloadBlob(blob, filename) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+// Palette for "Randomize Colors" (from the attached swatches). Picks are drawn
+// from this pool; individual color pickers still let you set custom colors.
+const COLOR_PALETTE = ['#ECA7E8', '#C4C2CD', '#968349', '#B6F18A', '#479CF1'];
+function _setColorControl(key, hex) {
+    const text = document.querySelector(`input[type=text][data-key="${key}"]`);
+    if (text) { text.value = hex; text.dispatchEvent(new Event('input', { bubbles: true })); }
+}
+controls.onAction('randomizeColors', () => {
+    const pool = COLOR_PALETTE.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    }
+    _setColorControl('textColor', pool[0]);
+    _setColorControl('highlightColor', pool[1]);
+    _setColorControl('innerColor', pool[2]);
+});
 
 controls.onAction('exportPng', () => {
     try {
