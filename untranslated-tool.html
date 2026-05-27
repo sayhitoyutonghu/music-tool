@@ -239,6 +239,10 @@
           <input type="range" data-key="inkSpread" min="2" max="60" step="1">
         </div>
         <div class="field">
+          <label>Text Diffusion <span class="val"></span></label>
+          <input type="range" data-key="textDiffusion" min="0" max="80" step="1">
+        </div>
+        <div class="field">
           <label>Edge Roundness <span class="val"></span></label>
           <input type="range" data-key="edgeRound" min="1" max="3" step="0.1">
         </div>
@@ -407,7 +411,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"titleBlur":5,"frameBlur":5,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"titleBlur":5,"frameBlur":5,"textDiffusion":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -844,6 +848,10 @@ const _offCtx = _offscreen.getContext('2d', { willReadFrequently: true });
 const _goo = document.createElement('canvas'); _goo.width = _goo.height = 1;
 const _gctx = _goo.getContext('2d');
 
+// Offscreen for the soft "Text Diffusion" halo (title-only ink bleed).
+const _diff = document.createElement('canvas'); _diff.width = _diff.height = 1;
+const _dctx = _diff.getContext('2d');
+
 // --- Cross-browser goo metaball compositor ---
 // Safari / iOS canvas2d does NOT apply SVG url(#filter) references, so the goo
 // blur silently does nothing there. Detect that once and fall back to a native
@@ -921,6 +929,33 @@ function applyGoo(srcCanvas, dstCtx, stdDev, fillColor) {
         a = a <= 0 ? 0 : a >= 1 ? 255 : a * 255;
         const o = i * 4;
         d[o] = rgb.r; d[o + 1] = rgb.g; d[o + 2] = rgb.b; d[o + 3] = a;
+    }
+    _gctxOut.putImageData(img, 0, 0);
+    dstCtx.drawImage(_gooOut, 0, 0);
+}
+
+// Soft (un-thresholded) colored blur of srcCanvas's alpha -> draws a feathered
+// halo of `hexColor` onto dstCtx. Used for the controllable "Text Diffusion"
+// ink bleed. Pure JS, so it works the same on Safari/iOS.
+function _softColorBlur(srcCanvas, dstCtx, radius, hexColor, maxAlpha) {
+    const cw = srcCanvas.width, ch = srcCanvas.height, n = cw * ch;
+    _gooOut.width = cw; _gooOut.height = ch;
+    const img = srcCanvas.getContext('2d').getImageData(0, 0, cw, ch);
+    const d = img.data;
+    if (!_gooA || _gooA.length < n) { _gooA = new Float32Array(n); _gooB = new Float32Array(n); }
+    const A = _gooA, B = _gooB;
+    for (let i = 0; i < n; i++) A[i] = d[i * 4 + 3];
+    const r = Math.max(1, Math.round(radius));
+    for (let pass = 0; pass < 3; pass++) {
+        _boxBlur1D(A, B, cw, ch, r, true);
+        _boxBlur1D(B, A, cw, ch, r, false);
+    }
+    const rgb = _parseHexRgb(hexColor);
+    const m = maxAlpha == null ? 1 : maxAlpha;
+    for (let i = 0; i < n; i++) {
+        const o = i * 4;
+        d[o] = rgb.r; d[o + 1] = rgb.g; d[o + 2] = rgb.b;
+        d[o + 3] = Math.min(255, A[i] * m);
     }
     _gctxOut.putImageData(img, 0, 0);
     dstCtx.drawImage(_gooOut, 0, 0);
@@ -1253,6 +1288,20 @@ function draw() {
         _gctx.beginPath();
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 2 * life * (p.sizeMult || 1); _gctx.moveTo(p.x, p.y); _gctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         _gctx.fill();
+
+        // Text Diffusion: a soft textColor halo bleeding outward from the
+        // lettering only (not the frame), drawn under the goo so it reads as an
+        // ink diffusion around the title.
+        const textDiffusion = controls.get('textDiffusion') ?? 0;
+        if (textDiffusion > 0) {
+            _diff.width = w; _diff.height = h;
+            _dctx.clearRect(0, 0, w, h);
+            _dctx.fillStyle = textColor;
+            _dctx.beginPath();
+            particles.forEach(p => { _dctx.moveTo(p.x, p.y); _dctx.arc(p.x, p.y, spread * 1.2, 0, Math.PI * 2); });
+            _dctx.fill();
+            _softColorBlur(_diff, ctx, textDiffusion, textColor, 0.85);
+        }
 
         applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1), textColor);
 
