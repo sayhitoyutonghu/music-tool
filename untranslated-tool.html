@@ -173,6 +173,10 @@
             <input type="text" data-key="highlightColor">
           </div>
         </div>
+        <div class="field">
+          <label>Outline Blur <span class="val"></span></label>
+          <input type="range" data-key="outlineBlur" min="0" max="30" step="1">
+        </div>
         <div class="field check">
           <input type="checkbox" data-key="showInner" id="cb-showInner">
           <label for="cb-showInner">Third Gradient Color</label>
@@ -183,6 +187,10 @@
             <input type="color" class="swatch" data-color-for="innerColor">
             <input type="text" data-key="innerColor">
           </div>
+        </div>
+        <div class="field">
+          <label>Inner Blur <span class="val"></span></label>
+          <input type="range" data-key="innerBlur" min="0" max="30" step="1">
         </div>
       </div>
     </section>
@@ -245,14 +253,6 @@
         <div class="field">
           <label>Edge Roundness <span class="val"></span></label>
           <input type="range" data-key="edgeRound" min="1" max="3" step="0.1">
-        </div>
-        <div class="field">
-          <label>Title Blur <span class="val"></span></label>
-          <input type="range" data-key="titleBlur" min="0" max="30" step="1">
-        </div>
-        <div class="field">
-          <label>Frame Blur <span class="val"></span></label>
-          <input type="range" data-key="frameBlur" min="0" max="30" step="1">
         </div>
         <div class="field check">
           <input type="checkbox" data-key="whiteTextBlur" id="cb-whiteTextBlur">
@@ -411,7 +411,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"titleBlur":5,"frameBlur":5,"textDiffusion":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"outlineBlur":5,"innerBlur":5,"textDiffusion":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -1305,55 +1305,38 @@ function draw() {
 
         applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1), textColor);
 
-        // Title and frame can be blurred independently. The blur applies only
-        // when "White Text Blur" is on; titleBlur softens the lettering
-        // (particles), frameBlur softens the animated border.
+        // Each colour layer has its own blur, gated by "White Text Blur":
+        // Outline Blur softens the highlightColor layer (the #97df93 outline),
+        // Inner Blur softens the innerColor layer. Both cover that layer's
+        // border + lettering together.
         const useBlur = controls.get('whiteTextBlur');
-        const useThreshold = controls.get('whiteTextThreshold');
-        const titleBlur = useBlur ? (controls.get('titleBlur') ?? 5) : 0;
-        const frameBlur = useBlur ? (controls.get('frameBlur') ?? 5) : 0;
-        if (useThreshold) {
-            const t = (controls.get('thresholdAmount') || 1) / 255;
-            const slope = 255;
-            const intercept = -slope * t + 0.5;
-            const threshFilter = document.querySelector(`#${sharpFilterId} feFuncA`);
-            if (threshFilter) { threshFilter.setAttribute('type', 'linear'); threshFilter.setAttribute('slope', slope); threshFilter.setAttribute('intercept', intercept); }
-        }
-        const _blurFilter = (px) => {
-            let s = px > 0 ? `blur(${px}px) ` : '';
-            if (useThreshold) s += `url(#${sharpFilterId}) `;
-            return s.trim() || 'none';
-        };
+        const outlineBlur = useBlur ? (controls.get('outlineBlur') ?? 5) : 0;
+        const innerBlur = useBlur ? (controls.get('innerBlur') ?? 5) : 0;
 
+        // Highlight (outline) layer
         ctx.save();
         const highlightColor = controls.get('highlightColor') || '#ffffff';
         ctx.fillStyle = highlightColor;
         ctx.strokeStyle = highlightColor;
         const hlSize = controls.get('highlightSize') ?? 0.3;
-        // frame pass
-        ctx.filter = _blurFilter(frameBlur);
+        ctx.filter = outlineBlur > 0 ? `blur(${outlineBlur}px)` : 'none';
         drawDynamicBorder(ctx, w, h, (controls.get('borderThickness') || 92) * 0.6, audioForce, time, complexity);
-        // title pass
-        ctx.filter = _blurFilter(titleBlur);
         ctx.beginPath();
         particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, spread * hlSize, 0, Math.PI * 2); });
         mouseTrail.forEach(p => { const age = now - p.birth, life = Math.max(0, 1 - (age / 2000)), size = spread * 0.5 * life * (p.sizeMult || 1); ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, size, 0, Math.PI * 2); });
         ctx.fill();
         ctx.restore();
 
-        // Third gradient stop: a soft (blurred) inset fill -- further inside
-        // than the highlight, so the frame/title reads as a 3-colour gradient
+        // Third gradient stop: the innerColor layer -- further inside than the
+        // outline, so the frame/title reads as a 3-colour gradient
         // (textColor -> highlightColor -> innerColor, outer to inner).
         if (controls.get('showInner')) {
             ctx.save();
             const innerColor = controls.get('innerColor') || '#FFFFFF';
             ctx.fillStyle = innerColor;
             ctx.strokeStyle = innerColor;
-            // frame pass
-            ctx.filter = frameBlur > 0 ? `blur(${frameBlur}px)` : 'none';
+            ctx.filter = innerBlur > 0 ? `blur(${innerBlur}px)` : 'none';
             drawDynamicBorder(ctx, w, h, (controls.get('borderThickness') || 92) * 0.32, audioForce, time, complexity);
-            // title pass
-            ctx.filter = titleBlur > 0 ? `blur(${titleBlur}px)` : 'none';
             ctx.beginPath();
             particles.forEach(p => { ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, Math.max(0.5, spread * 0.16), 0, Math.PI * 2); });
             ctx.fill();
