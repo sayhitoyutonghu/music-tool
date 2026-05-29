@@ -1260,13 +1260,15 @@ function draw() {
         const complexity = controls.get('borderComplexity') ?? 1;
         const time = Date.now() * 0.001 * fluidity;
 
-        // Composite title + trail into ONE shape on the offscreen (no filter),
-        // then apply the goo metaball ONCE. The frame border is drawn separately
-        // (after applyGoo) so its blur can be controlled independently without a
-        // hard goo-thresholded base competing with the soft feathered layer.
+        // Composite border + title + trail into ONE shape on the offscreen
+        // (no filter), then apply the goo metaball ONCE to the union. This makes
+        // frame + title a single whole → goo thresholding rounds all corners
+        // and junctions naturally.
         _goo.width = w; _goo.height = h;
         _gctx.clearRect(0, 0, w, h);
         _gctx.fillStyle = textColor; _gctx.strokeStyle = textColor;
+
+        drawDynamicBorder(_gctx, w, h, controls.get('borderThickness') || 92, audioForce, time, complexity);
 
         _gctx.beginPath();
         particles.forEach((p, i) => {
@@ -1308,21 +1310,17 @@ function draw() {
 
         applyGoo(_goo, ctx, spread * (controls.get('edgeRound') || 1), textColor);
 
-        // Frame border: drawn separately from the goo so its blur is fully
-        // independent of the text.  frameBlur=0 → hard opaque stroke drawn
-        // directly.  frameBlur>0 → pure-JS box-blur feathers all four edges
-        // (works on every browser / iOS Safari).
-        if (controls.get('showBorder') !== false) {
-            const frameBlur = controls.get('frameBlur') ?? 0;
+        // Frame Blur: a supplemental soft feathered layer drawn on top of the
+        // hard goo frame.  The goo frame above provides the rounded corners;
+        // this layer feathers the inner and outer edges when frameBlur > 0.
+        // Pure-JS box-blur → works on iOS Safari.
+        const frameBlur = controls.get('frameBlur') ?? 0;
+        if (frameBlur > 0 && controls.get('showBorder') !== false) {
             _diff.width = w; _diff.height = h;
             _dctx.clearRect(0, 0, w, h);
             _dctx.fillStyle = textColor; _dctx.strokeStyle = textColor;
             drawDynamicBorder(_dctx, w, h, controls.get('borderThickness') || 92, audioForce, time, complexity);
-            if (frameBlur > 0) {
-                _softColorBlur(_diff, ctx, frameBlur, textColor, 1);
-            } else {
-                ctx.drawImage(_diff, 0, 0);
-            }
+            _softColorBlur(_diff, ctx, frameBlur, textColor, 1);
         }
 
         // Each colour layer has its own blur, gated by "White Text Blur":
