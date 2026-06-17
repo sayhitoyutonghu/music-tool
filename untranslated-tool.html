@@ -127,6 +127,21 @@
       <button class="secondary" data-action="recordVideo">Record Video</button>
     </div>
 
+    <section class="acc open">
+      <button class="acc-head" type="button">Preset
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="acc-body">
+        <div class="field stack">
+          <label>Preset</label>
+          <select data-key="preset">
+            <option>Frame Audio Reactive</option>
+            <option>Hide Border</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
     <section class="acc">
       <button class="acc-head" type="button">Canvas
         <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
@@ -300,7 +315,7 @@
       <div class="acc-body">
         <div class="field check">
           <input type="checkbox" data-key="audioReactive" id="cb-audioReactive">
-          <label for="cb-audioReactive">Audio Reactive</label>
+          <label for="cb-audioReactive">Frame Audio Reactive</label>
         </div>
         <div class="field check">
           <input type="checkbox" data-key="showAudioDebug" id="cb-showAudioDebug">
@@ -415,7 +430,7 @@
     // Wires DOM inputs <-> values and actually fires onChange / onAction.
     // ======================================================================
     var controls = (function() {
-      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":true,"showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"outlineBlur":5,"innerBlur":5,"textDiffusion":0,"frameBlur":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
+      var _v = {"sizePreset":"Square 1:1","canvasWidth":1000,"canvasHeight":1000,"text":"untranslated","textColor":"#a48743","highlightColor":"#97df93","innerColor":"#00A6FC","showInner":true,"fontSize":228,"bottomTextSize":32,"letterSpacing":-13,"whiteTextBlur":true,"textLayout":"Center","fillWidth":true,"bottomText":"","fontPicker":{"family":"system-ui","style":"normal","weight":400,"url":null},"subtitlePosition":"Top Left","textAlign":"Center","positionH":"Right","positionV":"Bottom","audioFile":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/336e2df2e_audioFile_mpj1w1eh.mp3","audioSensitivity":80,"audioReactive":false,"preset":"Frame Audio Reactive","showAudioDebug":false,"showBorder":true,"playing":true,"inkSpread":27,"edgeRound":1,"connectionDensity":1,"connectionStrength":0,"borderThickness":124,"borderFluidity":0,"borderComplexity":3,"borderPadding":0,"framePadding":0,"connectToBorder":false,"mode":"Audio Pulse","subtitle":"","elementImage":"https://base44.app/api/apps/69cbcd44d3da2a5cef013f5e/files/mp/public/69cbcd44d3da2a5cef013f5e/4c51f9147_elementImage_mpiyz872.jpg","elementOpacity":100,"outlineBlur":5,"innerBlur":5,"textDiffusion":0,"frameBlur":0,"showTexture":true,"transparentBg":false,"highlightSize":0.3};
       var _defaults = JSON.parse(JSON.stringify(_v));
       var _changeCbs = {};
       var _actionCbs = {};
@@ -595,6 +610,38 @@
       controls.onChange('canvasHeight', function() { if (_prog) return; toCustom(); apply(); });
 
       apply();
+    })();
+
+    (function bindStylePreset() {
+      var PRESETS = {
+        'Frame Audio Reactive': { showBorder: true,  positionV: 'Bottom' },
+        'Hide Border':          { showBorder: false, positionV: 'Center' }
+      };
+      var _prog = false;
+      function syncUiKey(key, val) {
+        var el = document.querySelector('[data-key="' + key + '"]');
+        if (!el) return;
+        if (el.type === 'checkbox') el.checked = !!val;
+        else el.value = val;
+      }
+      controls.onChange('preset', function(name) {
+        if (_prog) return;
+        var p = PRESETS[name];
+        if (!p) return;
+        _prog = true;
+        Object.keys(p).forEach(function(k) {
+          controls.set(k, p[k]);
+          syncUiKey(k, p[k]);
+        });
+        _prog = false;
+      });
+      ['showBorder', 'positionV'].forEach(function(k) {
+        controls.onChange(k, function() {
+          if (_prog) return;
+          var sel = document.querySelector('select[data-key="preset"]');
+          if (sel) { _prog = true; sel.selectedIndex = -1; _prog = false; }
+        });
+      });
     })();
 
     {
