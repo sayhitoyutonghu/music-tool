@@ -142,12 +142,16 @@
               <span>No Mirror (Single Side)</span>
             </label>
             <label class="radio-pill">
-              <input type="radio" name="mirrorMode" value="horizontal" checked />
+              <input type="radio" name="mirrorMode" value="horizontal" />
               <span>Left / Right Mirror</span>
             </label>
             <label class="radio-pill">
               <input type="radio" name="mirrorMode" value="vertical" />
               <span>Top / Bottom Mirror</span>
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="mirrorMode" value="quad" checked />
+              <span>Quad (4-Fold Symmetry)</span>
             </label>
           </div>
         </section>
@@ -305,6 +309,10 @@
           <div class="field">
             <label>Taper Strength</label>
             <input data-key="taperStrength" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Sharp Tips (Flame / Leaf)</label>
+            <input data-key="sharpTips" type="range" min="0" max="1" step="0.01" />
           </div>
           <div class="field">
             <label>Curve Smoothness</label>

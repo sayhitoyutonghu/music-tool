@@ -24,13 +24,14 @@ const state = {
   lineThickness: 8,
   widthVariation: 0.42,
   taperStrength: 0.58,
+  sharpTips: 0.7,
   curveSmoothness: 0.7,
   circleGuideDensity: 0.52,
   circleGuideInfluence: 0.68,
   circleMinRadius: 2.4,
   circleMaxRadius: 9.5,
   noOverlapGap: 18,
-  mirrorMode: "horizontal",
+  mirrorMode: "quad",
   startFromBottom: true,
   useCircleScaffold: true,
   showGuides: false,
@@ -485,7 +486,11 @@ function createCircleGuides(options = {}) {
   const safeMargin = getPatternSafeMarginPx();
   const density = clamp(options.circleGuideDensity ?? state.circleGuideDensity, 0.1, 1);
   const totalCount = Math.floor(18 + density * 66);
-  const baseCount = state.mirrorMode === "none" ? totalCount : Math.ceil(totalCount / 2);
+  const baseCount = state.mirrorMode === "none"
+    ? totalCount
+    : state.mirrorMode === "quad"
+      ? Math.ceil(totalCount / 4)
+      : Math.ceil(totalCount / 2);
   const maxAttempts = baseCount * 22;
   const minR = minSide * clamp(state.circleMinRadius, 1, 12) / 100;
   const maxR = minSide * Math.max(clamp(state.circleMaxRadius, 2, 18), state.circleMinRadius + 0.5) / 100;
@@ -507,12 +512,17 @@ function createCircleGuides(options = {}) {
       } else {
         yMax = Math.max(yMin, state.canvasHeight / 2 - minSide * 0.025 - r * 0.3);
       }
+    } else if (state.mirrorMode === "quad") {
+      // Base geometry lives in the top-left quadrant, mirrored to all four.
+      xMax = Math.max(xMin, state.canvasWidth / 2 - minSide * 0.025 - r * 0.3);
+      yMax = Math.max(yMin, state.canvasHeight / 2 - minSide * 0.025 - r * 0.3);
     }
 
     const x = rand(xMin, xMax);
     const yBase = state.startFromBottom ? Math.pow(rand(), 2.15) : rand();
     let y = clamp((1 - yBase * 0.96) * state.canvasHeight, yMin, yMax);
     if (state.mirrorMode === "vertical" && !state.startFromBottom) y = rand(yMin, yMax);
+    if (state.mirrorMode === "quad") y = rand(yMin, yMax);
     const candidate = { x, y, r };
     if (pointInTextRect(x, y, r * 1.35) || pointInLogoRect(x, y, r * 1.1) || pointInBlankZone(x, y)) continue;
 
@@ -546,6 +556,10 @@ function createCircleGuides(options = {}) {
       addCircle({ ...circle, x: state.canvasWidth - circle.x, mirrorOf: circle });
     } else if (state.mirrorMode === "vertical") {
       addCircle({ ...circle, y: state.canvasHeight - circle.y, mirrorOf: circle });
+    } else if (state.mirrorMode === "quad") {
+      addCircle({ ...circle, x: state.canvasWidth - circle.x, mirrorOf: circle });
+      addCircle({ ...circle, y: state.canvasHeight - circle.y, mirrorOf: circle });
+      addCircle({ ...circle, x: state.canvasWidth - circle.x, y: state.canvasHeight - circle.y, mirrorOf: circle });
     }
   }
 
@@ -581,21 +595,25 @@ function createSeedPoint(signX, signY, margin, gapPad) {
   const cx = state.canvasWidth / 2;
   const cy = state.canvasHeight / 2;
   const rect = getTextRect(gapPad);
+  const isQuad = state.mirrorMode === "quad";
+  const fromBottom = state.startFromBottom && !isQuad;
   const minX = signX < 0 ? margin : cx + rect.w / 2 + rand(0, margin);
   const maxX = signX < 0 ? cx - rect.w / 2 - rand(0, margin) : state.canvasWidth - margin;
-  const minY = state.startFromBottom ? state.canvasHeight * 0.72 : signY < 0 ? margin : cy + rect.h / 2 + rand(0, margin);
-  const maxY = state.startFromBottom ? state.canvasHeight - margin : signY < 0 ? cy - rect.h / 2 - rand(0, margin) : state.canvasHeight - margin;
+  const minY = fromBottom ? state.canvasHeight * 0.72 : signY < 0 ? margin : cy + rect.h / 2 + rand(0, margin);
+  const maxY = fromBottom ? state.canvasHeight - margin : signY < 0 ? cy - rect.h / 2 - rand(0, margin) : state.canvasHeight - margin;
 
   let x = rand(Math.min(minX, maxX), Math.max(minX, maxX));
   let y = rand(Math.min(minY, maxY), Math.max(minY, maxY));
 
   if (state.useCircleScaffold && state.guideCircles.length && chance(0.78)) {
-    const pool = state.startFromBottom
-      ? state.guideCircles.filter((c) => c.y > state.canvasHeight * 0.42)
-      : state.guideCircles;
+    const pool = isQuad
+      ? state.guideCircles.filter((c) => c.x <= cx && c.y <= cy)
+      : fromBottom
+        ? state.guideCircles.filter((c) => c.y > state.canvasHeight * 0.42)
+        : state.guideCircles;
     const source = pool.length ? pool : state.guideCircles;
     const circle = source[Math.floor(rand(0, source.length))];
-    const perimeterAngle = state.startFromBottom
+    const perimeterAngle = fromBottom
       ? -Math.PI / 2 + rand(-1.2, 1.2)
       : rand(-Math.PI, Math.PI);
     x = circle.x + Math.cos(perimeterAngle) * circle.r * rand(0.85, 1.12);
@@ -604,7 +622,7 @@ function createSeedPoint(signX, signY, margin, gapPad) {
 
   if (pointBlocked(x, y, gapPad)) {
     x = clamp(cx + signX * rand(gapPad + 20, state.canvasWidth * 0.42), margin, state.canvasWidth - margin);
-    y = state.startFromBottom
+    y = fromBottom
       ? rand(Math.min(state.canvasHeight - margin, state.canvasHeight * 0.74), state.canvasHeight - margin)
       : clamp(cy + signY * rand(gapPad + 20, state.canvasHeight * 0.42), margin, state.canvasHeight - margin);
   }
@@ -617,6 +635,9 @@ function circleAllowedForSign(circle, signX, signY) {
   }
   if (state.mirrorMode === "vertical") {
     return signY > 0 ? circle.y >= state.canvasHeight / 2 : circle.y <= state.canvasHeight / 2;
+  }
+  if (state.mirrorMode === "quad") {
+    return circle.x <= state.canvasWidth / 2 && circle.y <= state.canvasHeight / 2;
   }
   return true;
 }
@@ -1716,17 +1737,19 @@ function buildPattern() {
   const scriptQuota = textActive ? Math.floor(count * (0.28 + scriptInfluence * 0.5)) : 0;
   let attempts = 0;
 
+  const quadMirror = state.mirrorMode === "quad";
   while (basePaths.length < count && attempts < maxAttempts) {
     attempts += 1;
-    const seedSignX = state.mirrorMode === "horizontal" ? -1 : (chance(0.5) ? -1 : 1);
+    const seedSignX = (state.mirrorMode === "horizontal" || quadMirror) ? -1 : (chance(0.5) ? -1 : 1);
+    const seedSignY = quadMirror ? -1 : (state.startFromBottom ? 1 : -1);
     let path = null;
     if (textActive && basePaths.length < scriptQuota && chance(0.58 + scriptInfluence * 0.36)) {
-      path = createCalligraphicStrokePath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
+      path = createCalligraphicStrokePath(seedSignX, seedSignY, runtime);
     }
     if (!path && state.useCircleScaffold && chance(0.68 + circleInfluenceValue * 0.28)) {
-      path = createCircleScaffoldPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
+      path = createCircleScaffoldPath(seedSignX, seedSignY, runtime);
     }
-    if (!path) path = createCurlPath(seedSignX, state.startFromBottom ? 1 : -1, runtime);
+    if (!path) path = createCurlPath(seedSignX, seedSignY, runtime);
     decoratePath(path, runtime);
     if (path.points.length <= 2) continue;
     const samples = collectPathPoints(path);
@@ -1743,6 +1766,10 @@ function buildPattern() {
       mirrored.push(mirrorPath(path, true, false));
     } else if (state.mirrorMode === "vertical") {
       mirrored.push(mirrorPath(path, false, true));
+    } else if (state.mirrorMode === "quad") {
+      mirrored.push(mirrorPath(path, true, false));
+      mirrored.push(mirrorPath(path, false, true));
+      mirrored.push(mirrorPath(path, true, true));
     }
   }
 
@@ -1755,11 +1782,17 @@ function buildPattern() {
 function segmentWidth(baseWidth, t, phase) {
   const widthVariation = clamp(state.widthVariation, 0, 1);
   const taperStrength = clamp(state.taperStrength, 0, 1);
+  const sharp = clamp(state.sharpTips ?? 0, 0, 1);
   const wave = 0.5 + 0.5 * Math.sin(t * Math.PI * 2 + phase * 1.3);
   const variationScale = (1 - widthVariation * 0.48) + wave * widthVariation;
-  const edgeFalloff = Math.pow(Math.sin(Math.PI * clamp(t, 0, 1)), 1.08);
-  const taperScale = (1 - taperStrength) + taperStrength * (0.18 + edgeFalloff * 0.82);
-  return Math.max(0.35, baseWidth * variationScale * taperScale);
+  // Sharp flame/leaf profile: a fatter body that tapers to a sharp point at the
+  // tips. Lower the sine exponent (fuller body) and drive the ends toward zero.
+  const falloffExp = 1.08 - sharp * 0.62;
+  const edgeFalloff = Math.pow(Math.sin(Math.PI * clamp(t, 0, 1)), falloffExp);
+  const tipFloor = 0.18 - sharp * 0.16;
+  const taperScale = (1 - taperStrength) + taperStrength * (tipFloor + edgeFalloff * (1 - tipFloor));
+  const widthFloor = 0.35 - sharp * 0.23;
+  return Math.max(widthFloor, baseWidth * variationScale * taperScale);
 }
 
 function drawCrayonMicroDetails(p0, p1, index, currentWidth, phase, color, alpha, rough, baseJitterX, baseJitterY) {
